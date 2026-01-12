@@ -151,15 +151,15 @@ def main():
     # interactive plots
     if config["generate_plots"]:
         print("\nSelect SHAP plots to generate:")
-        plots_options = ['beeswarm', 'bar', 'violin', 'dependence', 'all']
+        plots_options = ['beeswarm', 'bar', 'violin', 'dependence', 'heatmap', 'interactive_heatmap', 'all']
         for i, p in enumerate(plots_options, 1):
             print(f"{i} → {p}")
-        choice = input("Enter numbers separated by comma (e.g., 1,3) or for all 5: ").strip().lower()
+        choice = input("Enter numbers separated by comma (e.g., 1,3) or for all 7: ").strip().lower()
         selected_plots = []
 
         # check if user typed all
-        if choice == 5:
-            selected_plots = ['beeswarm', 'bar', 'violin', 'dependence']
+        if choice == 7:
+            selected_plots = ['beeswarm', 'bar', 'violin', 'dependence', 'heatmap', 'interactive_heatmap']
         else:
             for c in choice.split(','):
                 c = c.strip()
@@ -170,13 +170,13 @@ def main():
                     if 0 <= idx < len(plots_options) - 1:
                         selected_plots.append(plots_options[idx])
                     elif idx == len(plots_options) - 1:  # number corresponding to "all"
-                        selected_plots = ['beeswarm', 'bar', 'violin', 'dependence']
+                        selected_plots = ['beeswarm', 'bar', 'violin', 'dependence', 'heatmap', 'interactive_heatmap']
                         break
                 except ValueError:
                     continue
 
             if not selected_plots:
-                selected_plots = ['beeswarm', 'bar', 'violin', 'dependence']
+                selected_plots = ['beeswarm', 'bar', 'violin', 'dependence', 'heatmap', 'interactive_heatmap']
 
         # create common folder with time to recognize
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
