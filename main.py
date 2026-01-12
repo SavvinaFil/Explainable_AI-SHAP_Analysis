@@ -15,9 +15,13 @@ CONFIG_PATH = "config.json"
 def load_config():
     try:
         with open(CONFIG_PATH, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
+            content = f.read().strip()
+            if not content:
+                return {}
+            return json.loads(content)
+    except (FileNotFoundError, json.JSONDecodeError):
         return {}
+
 
 def save_config(config):
     with open(CONFIG_PATH, "w") as f:
@@ -82,7 +86,7 @@ def main():
         config_changed = True
 
     if "output_dir" not in config:
-        config["output_dir"] = input("Enter path for output folder: ").strip() or "outputs"
+        config["output_dir"] = input("Enter path for output folder (if not just press enter): ").strip() or "outputs"
         config_changed = True
 
     # ask basic preferences if they are missing
@@ -190,5 +194,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
