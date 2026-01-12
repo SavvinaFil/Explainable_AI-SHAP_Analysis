@@ -150,11 +150,11 @@ def main():
         plots_options = ['beeswarm', 'bar', 'violin', 'dependence', 'all']
         for i, p in enumerate(plots_options, 1):
             print(f"{i} → {p}")
-        choice = input("Enter numbers separated by comma (e.g., 1,3) or 'all': ").strip().lower()
+        choice = input("Enter numbers separated by comma (e.g., 1,3) or for all 5: ").strip().lower()
         selected_plots = []
 
-        # Check if user typed 'all'
-        if choice == 'all':
+        # check if user typed all
+        if choice == 5:
             selected_plots = ['beeswarm', 'bar', 'violin', 'dependence']
         else:
             for c in choice.split(','):
