@@ -78,7 +78,7 @@ def plot_shap_values(shap_values, X_df, feature_names, output_dir, selected_plot
         plt.savefig(os.path.join(output_dir, "shap_violin.png"), bbox_inches="tight")
         plt.close()
 
-    # Dependence (one plot per each feature)
+    # Dependence (one plot per each feature that I have)
     if 'dependence' in selected_plots:
         for feat in feature_names:
             plt.figure()
@@ -86,55 +86,88 @@ def plot_shap_values(shap_values, X_df, feature_names, output_dir, selected_plot
             plt.savefig(os.path.join(output_dir, f"dependence_{feat}.png"), bbox_inches="tight")
             plt.close()
 
-    # Heatmap
-    if 'heatmap' in selected_plots:
-        # make dataframe of shap values
-        shap_df = pd.DataFrame(shap_array, columns=feature_names)
-        # sort the features from the most significant to least
-        feature_order = shap_df.abs().mean().sort_values(ascending=False).index
-        shap_sorted = shap_df[feature_order]
-
-        # size of the image automatic depending on features
-        n_samples, n_features = shap_sorted.shape
-        figsize = (max(12, n_samples / 50), max(8, n_features / 2))
-        plt.figure(figsize=figsize)
-
-        # heatmap wth positive and negative shap values
-        im = plt.imshow(shap_sorted.T, aspect='auto', cmap='RdBu', interpolation='nearest')
-        plt.colorbar(im, label='SHAP value')
-        plt.yticks(ticks=np.arange(n_features), labels=shap_sorted.columns)
-        plt.xlabel("Samples")
-        plt.ylabel("Features (sorted by importance)")
-        plt.title("SHAP Heatmap")
-
-
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, "shap_heatmap.png"), bbox_inches="tight")
-        plt.close()
-
-        if 'interactive_heatmap' in selected_plots:
-            try:
-                import plotly.express as px
-            except ImportError:
-                pass  # if plotly not installed skip this
-            else:
+            # Heatmap
+            if 'heatmap' in selected_plots:
                 shap_df = pd.DataFrame(shap_array, columns=feature_names)
-                # from most significant to least
-                feature_order = shap_df.abs().mean().sort_values(ascending=False).index
+
+                # Sort features by mean absolute SHAP value (importance)
+                mean_abs_shap = shap_df.abs().mean()
+                feature_order = mean_abs_shap.sort_values(ascending=False).index
                 shap_sorted = shap_df[feature_order]
 
-                y_order = list(shap_sorted.columns[::-1])
+                # symmetric color scale around 0
+                max_abs = np.abs(shap_sorted.values).max()
 
-                fig = px.imshow(
-                    shap_sorted.T.values,
-                    labels=dict(x="Samples", y="Features", color="SHAP value"),
-                    x=np.arange(shap_sorted.shape[0]),  # δείγματα
-                    y=y_order,  # αντιστραμμένα features
-                    color_continuous_scale='RdBu',
-                    origin='upper'
+                n_samples, n_features = shap_sorted.shape
+                figsize = (max(12, n_samples / 50), max(8, n_features / 2))
+
+                plt.figure(figsize=figsize)
+
+                im = plt.imshow(
+                    shap_sorted.T,
+                    aspect='auto',
+                    cmap='RdBu_r',
+                    vmin=-max_abs,
+                    vmax=+max_abs,
+                    interpolation='nearest'
                 )
-                fig.update_layout(title="Interactive SHAP Heatmap")
-                interactive_path = os.path.join(output_dir, "shap_interactive_heatmap.html")
-                fig.write_html(interactive_path)
+
+                cbar = plt.colorbar(im)
+                cbar.set_label("SHAP value")
+
+                plt.yticks(
+                    ticks=np.arange(n_features),
+                    labels=shap_sorted.columns
+                )
+
+                plt.xlabel("Samples")
+                plt.ylabel("Features (sorted by mean |SHAP|)")
+                plt.title("SHAP Heatmap")
+
+                plt.tight_layout()
+                plt.savefig(
+                    os.path.join(output_dir, "shap_heatmap.png"),
+                    bbox_inches="tight"
+                )
+                plt.close()
+
+            if 'interactive_heatmap' in selected_plots:
+                try:
+                    import plotly.express as px
+                except ImportError:
+                    pass
+                else:
+                    shap_df = pd.DataFrame(shap_array, columns=feature_names)
+
+                    mean_abs_shap = shap_df.abs().mean()
+                    feature_order = mean_abs_shap.sort_values(ascending=False).index
+                    shap_sorted = shap_df[feature_order]
+
+                    max_abs = np.abs(shap_sorted.values).max()
+
+                    fig = px.imshow(
+                        shap_sorted.T.values,
+                        labels=dict(
+                            x="Samples",
+                            y="Features (sorted by mean |SHAP|)",
+                            color="SHAP value"
+                        ),
+                        x=np.arange(shap_sorted.shape[0]),
+                        y=shap_sorted.columns,
+                        color_continuous_scale='RdBu_r',
+                        zmin=-max_abs,
+                        zmax=+max_abs,
+                        origin='upper'
+                    )
+
+                    fig.update_layout(
+                        title="Interactive SHAP Heatmap"
+                    )
+
+                    interactive_path = os.path.join(
+                        output_dir,
+                        "shap_interactive_heatmap.html"
+                    )
+                    fig.write_html(interactive_path)
 
     print(f"SHAP plots saved to folder: {output_dir}")

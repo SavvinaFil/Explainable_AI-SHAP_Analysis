@@ -3,33 +3,63 @@ import numpy as np
 import pickle
 from sklearn.ensemble import RandomForestClassifier
 
-
 np.random.seed(42)
 
 n_samples = 1000
 
+# first create the ages
+ages = np.random.randint(18, 70, size=n_samples)
+
+# calculate the max years of employmwnt per person we suppose they started after 18 or later
+max_work_years = ages - 18
+
+# per person years of employment can be from 0 to max_work_years
+years_of_employment = np.array([
+    np.random.randint(0, max(1, max_years + 1))
+    for max_years in max_work_years
+])
+
+# make realistic incomes that increase with age and experience
+base_income = np.random.randint(15000, 50000, size=n_samples)
+experience_bonus = years_of_employment * np.random.randint(500, 2000, size=n_samples)
+income_per_year = np.clip(base_income + experience_bonus, 10000, 150000)
+
 data = {
-    "Age": np.random.randint(18, 70, size=n_samples),
-    "Income per Year": np.random.randint(10000, 100000, size=n_samples),
-    "Years of Employment": np.random.randint(0, 52, size=n_samples)
+    "Age": ages,
+    "Income per Year": income_per_year,
+    "Years of Employment": years_of_employment
 }
 
 df = pd.DataFrame(data)
 
-
+# Πιο realistic κριτήρια για έγκριση δανείου
+# Λαμβάνουμε υπόψη πολλαπλούς παράγοντες
 df["Loan Approved"] = (
     (df["Income per Year"] > 40000) &
-    (df["Age"] > 35) &
-    (df["Years of Employment"] > 5)
+    (df["Age"] >= 30) &
+    (df["Years of Employment"] >= 2) &
+    (
+        # extra criteria for better balance
+        ((df["Age"] > 35) & (df["Years of Employment"] > 5)) |
+        ((df["Income per Year"] > 60000) & (df["Years of Employment"] > 3))
+    )
 ).astype(int)
 
 
+print("\nDataset Statistics?\n")
+print(f"Total samples: {len(df)}")
+print(f"\nAge range: {df['Age'].min()} - {df['Age'].max()}")
+print(f"Income range: ${df['Income per Year'].min():,} - ${df['Income per Year'].max():,}")
+print(f"Years of Employment range: {df['Years of Employment'].min()} - {df['Years of Employment'].max()}")
+print(f"\nLoan Approved: {df['Loan Approved'].sum()} ({df['Loan Approved'].mean()*100:.1f}%)")
+print(f"Loan Rejected: {(1-df['Loan Approved']).sum()} ({(1-df['Loan Approved'].mean())*100:.1f}%)")
 
+# save dataset
 dataset_path = "realistic_dataset.csv"
 df.to_csv(dataset_path, index=False)
-print(f"Dataset saved: {dataset_path}")
+print(f"\nDataset saved: {dataset_path}")
 
-
+# train model
 features = [
     "Age",
     "Income per Year",
@@ -40,11 +70,10 @@ X = df[features]
 y = df["Loan Approved"]
 
 model = RandomForestClassifier(n_estimators=50, max_depth=4, random_state=42)
-
-
 model.fit(X, y)
 
 
+# save the model
 model_path = "realistic_decision_tree.pkl"
 with open(model_path, "wb") as f:
     pickle.dump(model, f)

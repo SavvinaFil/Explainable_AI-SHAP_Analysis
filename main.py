@@ -120,7 +120,7 @@ def main():
     feature_names = list(model.feature_names_in_)
     X_df = load_dataset(choice=2, feature_names=feature_names, path_override=config["dataset_path"])
 
-    # Apply dataset start and stop
+    # apply dataset start and stop
     if config["dataset_scope"] == "subset":
         X_sample = X_df.iloc[config["subset_start"]:config["subset_end"]]
         print(f"Using dataset subset [{config['subset_start']}:{config['subset_end']}]")
