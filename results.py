@@ -16,23 +16,31 @@ def compute_shap_values(model, X_df):
 def show_shap_values(shap_array, feature_names, preds=None):
     shap_array = np.array(shap_array)
 
-    # Predictios to take Shap values
+    # Predictions to extract correct SHAP values
     if shap_array.ndim == 3:
         if preds is None:
-            raise ValueError("Predictions are necessary to show shap values correct")
+            raise ValueError("Predictions are necessary to show shap values correctly")
+        # Multi-class: extract SHAP values for predicted class
         shap_array = shap_array[np.arange(len(preds)), :, preds]
 
     if shap_array.ndim == 1:
         shap_array = shap_array.reshape(1, -1)
 
     print("\nSHAP values per feature:\n")
-    for i, row in enumerate(shap_array):
+    # Limit display to first 100 samples for large datasets
+    max_samples_to_show = min(100, len(shap_array))
+
+    for i, row in enumerate(shap_array[:max_samples_to_show]):
         if preds is not None:
-            print(f"Row {i + 1} (predicted class: {preds[i]}):")
+            print(f"Sample {i} (predicted class: {preds[i]}):")
         else:
-            print(f"Row {i + 1}:")
+            print(f"Sample {i}:")
         for j, feat in enumerate(feature_names):
             print(f"  {feat}: {float(row[j]):+.4f}")
+        print("-" * 40)
+
+    if len(shap_array) > max_samples_to_show:
+        print(f"... (showing first {max_samples_to_show} of {len(shap_array)} samples)")
         print("-" * 40)
 
 
@@ -41,23 +49,27 @@ def save_results_to_excel(X_df, shap_array, feature_names, preds, output_dir):
 
     shap_array = np.array(shap_array)
 
+    # Handle multi-class SHAP values
     if shap_array.ndim == 3:
         if preds is None:
-            raise ValueError("Predictions are important to save shap values correct")
+            raise ValueError("Predictions are necessary to save shap values correctly")
         shap_array = shap_array[np.arange(len(preds)), :, preds]
 
     if shap_array.ndim == 1:
         shap_array = shap_array.reshape(1, -1)
 
+    # Create SHAP DataFrame with proper column names
     shap_df = pd.DataFrame(
-        [shap_array[i] for i in range(len(shap_array))],
+        shap_array,
         columns=[f"SHAP_{f}" for f in feature_names]
     )
 
+    # Create predictions DataFrame
     pred_df = pd.DataFrame({
         "Predicted_Class": preds
     })
 
+    # Combine all data
     output_df = pd.concat([
         X_df.reset_index(drop=True),
         pred_df,
@@ -66,7 +78,7 @@ def save_results_to_excel(X_df, shap_array, feature_names, preds, output_dir):
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # Create unique filename with a timestamp
+    # Create unique filename with timestamp
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     output_path = os.path.join(output_dir, f"shap_results_{timestamp}.xlsx")
 
@@ -77,27 +89,35 @@ def save_results_to_excel(X_df, shap_array, feature_names, preds, output_dir):
         output_path_alt = os.path.join(output_dir, f"shap_results_{timestamp}_alt.xlsx")
         output_df.to_excel(output_path_alt, index=False)
         print(f"SHAP results saved to: {output_path_alt}")
+    except Exception as e:
+        print(f"⚠️ Error saving Excel file: {e}")
+        # Try CSV as fallback
+        csv_path = os.path.join(output_dir, f"shap_results_{timestamp}.csv")
+        output_df.to_csv(csv_path, index=False)
+        print(f"Results saved as CSV instead: {csv_path}")
 
 
 def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir, selected_plots=None, explainer=None):
     os.makedirs(output_dir, exist_ok=True)
     shap_array = np.array(shap_values)
 
+    # Handle multi-class SHAP values
     if shap_array.ndim == 3:
         if preds is None:
-            raise ValueError("Predictions are important to create shap values correct")
+            raise ValueError("Predictions are necessary to create shap plots correctly")
         shap_array = shap_array[np.arange(len(preds)), :, preds]
 
     if shap_array.ndim == 1:
         shap_array = shap_array.reshape(1, -1)
 
     if selected_plots is None:
-        selected_plots = ['beeswarm', 'bar', 'violin', 'dependence', 'decision',
-                          'interactive_decision', 'heatmap', 'interactive_heatmap']
+        selected_plots = ['beeswarm', 'bar', 'violin', 'dependence', 'decision_map',
+                          'interactive_decision_map', 'heatmap', 'interactive_heatmap', 'waterfall']
 
-    # Find the classes
+    # Find unique classes
     unique_classes = np.unique(preds)
-    print(f"\nFound {len(unique_classes)} different classes: {unique_classes}")
+    n_classes = len(unique_classes)
+    print(f"\nFound {n_classes} different class(es): {unique_classes}")
 
     # Separete data per class
     for class_val in unique_classes:
@@ -107,81 +127,108 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir, select
         if n_samples_class == 0:
             continue
 
-        # Take samples for a class
+        # Take samples for this class
         shap_class = shap_array[mask]
         X_class = X_df[mask]
 
-
         # Beeswarm
         if 'beeswarm' in selected_plots:
-            plt.figure()
-            shap.summary_plot(shap_class, X_class, feature_names=feature_names, show=False)
-            plt.title(f"SHAP Beeswarm Plot - Class {class_val}")
-            plt.savefig(os.path.join(output_dir, f"shap_beeswarm_class_{class_val}.png"), bbox_inches="tight", dpi=150)
-            plt.close()
+            try:
+                plt.figure(figsize=(10, 6))
+                shap.summary_plot(shap_class, X_class, feature_names=feature_names, show=False)
+                plt.title(f"SHAP Beeswarm Plot - Class {class_val}", fontsize=12, fontweight='bold')
+                plt.tight_layout()
+                plt.savefig(os.path.join(output_dir, f"shap_beeswarm_class_{class_val}.png"), bbox_inches="tight",
+                            dpi=150)
+                plt.close()
+            except Exception as e:
+                print(f"Error creating beeswarm plot for class {class_val}: {e}")
 
         # Bar
         if 'bar' in selected_plots:
-            plt.figure()
-            shap.summary_plot(shap_class, X_class, feature_names=feature_names, plot_type="bar", show=False)
-            plt.title(f"SHAP Feature Importance - Class {class_val}")
-            plt.savefig(os.path.join(output_dir, f"shap_bar_class_{class_val}.png"), bbox_inches="tight", dpi=150)
-            plt.close()
+            try:
+                plt.figure(figsize=(10, 6))
+                shap.summary_plot(shap_class, X_class, feature_names=feature_names, plot_type="bar", show=False)
+                plt.title(f"SHAP Feature Importance - Class {class_val}", fontsize=12, fontweight='bold')
+                plt.tight_layout()
+                plt.savefig(os.path.join(output_dir, f"shap_bar_class_{class_val}.png"), bbox_inches="tight", dpi=150)
+                plt.close()
+            except Exception as e:
+                print(f"Error creating bar plot for class {class_val}: {e}")
 
         # Violin
         if 'violin' in selected_plots:
-            plt.figure()
-            shap.summary_plot(shap_class, X_class, feature_names=feature_names, plot_type="violin", show=False)
-            plt.title(f"SHAP Violin Plot - Class {class_val}")
-            plt.savefig(os.path.join(output_dir, f"shap_violin_class_{class_val}.png"), bbox_inches="tight", dpi=150)
-            plt.close()
-
-        # Dependence (one plot for very feature)
-        if 'dependence' in selected_plots:
-            for feat in feature_names:
-                plt.figure()
-                shap.dependence_plot(feat, shap_class, X_class, show=False)
-                plt.title(f"SHAP Dependence: {feat} - Class {class_val}")
-                plt.savefig(os.path.join(output_dir, f"dependence_{feat}_class_{class_val}.png"), bbox_inches="tight",
+            try:
+                plt.figure(figsize=(10, 6))
+                shap.summary_plot(shap_class, X_class, feature_names=feature_names, plot_type="violin", show=False)
+                plt.title(f"SHAP Violin Plot - Class {class_val}", fontsize=12, fontweight='bold')
+                plt.tight_layout()
+                plt.savefig(os.path.join(output_dir, f"shap_violin_class_{class_val}.png"), bbox_inches="tight",
                             dpi=150)
                 plt.close()
+            except Exception as e:
+                print(f"Error creating violin plot for class {class_val}: {e}")
+
+        # Dependence (one plot for each feature)
+        if 'dependence' in selected_plots:
+            for feat in feature_names:
+                try:
+                    plt.figure(figsize=(8, 6))
+                    shap.dependence_plot(feat, shap_class, X_class, show=False)
+                    plt.title(f"SHAP Dependence: {feat} - Class {class_val}", fontsize=11, fontweight='bold')
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(output_dir, f"dependence_{feat}_class_{class_val}.png"),
+                                bbox_inches="tight", dpi=150)
+                    plt.close()
+                except Exception as e:
+                    print(f"Error creating dependence plot for {feat}, class {class_val}: {e}")
 
         # Decision Plot per class
         if 'decision_map' in selected_plots:
-            # Use expected value per class
-            if hasattr(shap_values, 'ndim') and np.array(shap_values).ndim == 3:
-                # Multi-class
-                expected_value = explainer.expected_value[int(class_val)]
-            elif isinstance(explainer.expected_value, (list, np.ndarray)):
-                # Binary with array expected values
-                expected_value = explainer.expected_value[int(class_val)]
-            else:
-                expected_value = explainer.expected_value
+            try:
+                # Use expected value per class
+                if hasattr(shap_values, 'ndim') and np.array(shap_values).ndim == 3:
+                    # Multi-class
+                    if isinstance(explainer.expected_value, (list, np.ndarray)) and len(explainer.expected_value) > int(
+                            class_val):
+                        expected_value = explainer.expected_value[int(class_val)]
+                    else:
+                        expected_value = explainer.expected_value
+                elif isinstance(explainer.expected_value, (list, np.ndarray)):
+                    # Binary with array expected values
+                    if len(explainer.expected_value) > int(class_val):
+                        expected_value = explainer.expected_value[int(class_val)]
+                    else:
+                        expected_value = explainer.expected_value[0]
+                else:
+                    expected_value = explainer.expected_value
 
-            # Create decision plot with all samples
-            plt.figure(figsize=(12, 8))
-            shap.decision_plot(
-                expected_value,
-                shap_class,
-                X_class,
-                feature_names=feature_names,
-                show=False,
-                link='identity'
-            )
-            plt.title(f"SHAP Decision Plot - Class {class_val}\n"
-                      f"(All {n_samples_class} samples)",
-                      fontsize=11, fontweight='bold')
-            plt.tight_layout()
-            plt.savefig(os.path.join(output_dir, f"shap_decision_class_{class_val}.png"),
-                        bbox_inches="tight", dpi=150)
-            plt.close()
+                # Create decision plot with all samples
+                plt.figure(figsize=(12, 8))
+                shap.decision_plot(
+                    expected_value,
+                    shap_class,
+                    X_class,
+                    feature_names=feature_names,
+                    show=False,
+                    link='identity'
+                )
+                plt.title(f"SHAP Decision Plot - Class {class_val}\n"
+                          f"({n_samples_class} samples)",
+                          fontsize=11, fontweight='bold')
+                plt.tight_layout()
+                plt.savefig(os.path.join(output_dir, f"shap_decision_class_{class_val}.png"),
+                            bbox_inches="tight", dpi=150)
+                plt.close()
+            except Exception as e:
+                print(f"Error creating decision plot for class {class_val}: {e}")
 
     # Unified Decision Plot
-    if 'decision_map' in selected_plots and len(unique_classes) == 2:
+    if 'decision_map' in selected_plots and n_classes == 2:
 
         try:
             # Expected value for class 1
-            if isinstance(explainer.expected_value, (list, np.ndarray)):
+            if isinstance(explainer.expected_value, (list, np.ndarray)) and len(explainer.expected_value) > 1:
                 expected_val_class1 = explainer.expected_value[1]
             else:
                 expected_val_class1 = explainer.expected_value
@@ -231,17 +278,16 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir, select
                             bbox_inches="tight", dpi=150)
                 plt.close()
 
-
         except Exception as e:
-            print(f"   ⚠️ Error: {e}")
+            print(f"Error creating unified decision plot: {e}")
 
-    # Interactive Unified Decision Plot
-    if 'interactive_decision_map' in selected_plots and len(unique_classes) == 2:
+    # Interactive Unified Decision Plot (works best for binary classification)
+    if 'interactive_decision_map' in selected_plots and n_classes == 2:
 
         try:
             import plotly.graph_objects as go
 
-            if isinstance(explainer.expected_value, (list, np.ndarray)):
+            if isinstance(explainer.expected_value, (list, np.ndarray)) and len(explainer.expected_value) > 1:
                 expected_val_class1 = explainer.expected_value[1]
             else:
                 expected_val_class1 = explainer.expected_value
@@ -364,13 +410,10 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir, select
                 interactive_path = os.path.join(output_dir, "shap_decision_unified_interactive.html")
                 fig.write_html(interactive_path)
 
-
         except ImportError:
-            print("Plotly not installed skipping interactive decision plot")
+            print("Plotly not installed, skipping interactive decision plot")
         except Exception as e:
-            print(f"Error: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"Error creating interactive decision plot: {e}")
 
     if 'heatmap' in selected_plots:
         shap_df = pd.DataFrame(shap_array, columns=feature_names)
@@ -410,7 +453,7 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir, select
         ax.set_title("SHAP Heatmap - Όλα τα δείγματα", fontsize=12, fontweight='bold')
 
         current_pos = 0
-        for i, class_val in enumerate(unique_classes[:-1]):  # Όχι για την τελευταία κλάση
+        for i, class_val in enumerate(unique_classes[:-1]):
             class_count = (preds_sorted == class_val).sum()
             current_pos += class_count
             ax.axvline(x=current_pos - 0.5, color='yellow', linewidth=2, linestyle='--')
@@ -436,9 +479,7 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir, select
     if 'interactive_heatmap' in selected_plots:
         try:
             import plotly.graph_objects as go
-        except ImportError:
-            print("⚠️ Το plotly δεν είναι εγκατεστημένο. Παράλειψη interactive heatmap.")
-        else:
+
             shap_df = pd.DataFrame(shap_array, columns=feature_names)
 
             mean_abs_shap = shap_df.abs().mean()
@@ -476,6 +517,7 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir, select
                 colorbar=dict(title="SHAP value")
             ))
 
+            # Draw vertical lines between classes
             current_pos = 0
             for i, class_val in enumerate(unique_classes[:-1]):
                 class_count = (preds_sorted == class_val).sum()
@@ -483,7 +525,7 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir, select
                 fig.add_vline(x=current_pos - 0.5, line_dash="dash", line_color="yellow", line_width=2)
 
             fig.update_layout(
-                title="Interactive SHAP Heatmap - Όλα τα δείγματα",
+                title=f"Interactive SHAP Heatmap ({len(shap_sorted)} samples, {n_classes} classes)",
                 xaxis_title=f"Samples (sorted by class: {', '.join(map(str, unique_classes))})",
                 yaxis_title="Features (sorted by mean |SHAP|)",
                 height=600
@@ -491,5 +533,164 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir, select
 
             interactive_path = os.path.join(output_dir, "shap_interactive_heatmap_unified.html")
             fig.write_html(interactive_path)
+
+        except ImportError:
+            print("Plotly not installed, skipping interactive heatmap")
+        except Exception as e:
+            print(f"Error creating interactive heatmap: {e}")
+
+    # Waterfall plots
+    if 'waterfall' in selected_plots:
+
+        # Create waterfall subfolder
+        waterfall_dir = os.path.join(output_dir, "waterfall_plots")
+        os.makedirs(waterfall_dir, exist_ok=True)
+
+        # Determine how to extract SHAP values for waterfall
+        shap_values_raw = np.array(shap_values)
+
+        # Handle different SHAP value formats
+        if shap_values_raw.ndim == 3:
+            # Binary classification: shape is (2, n_samples, n_features) or (n_samples, n_features, 2)
+            if shap_values_raw.shape[0] == 2 and shap_values_raw.shape[1] == len(X_df):
+                # Format: (2, n_samples, n_features) - use class 1
+                shap_for_waterfall = shap_values_raw[1]
+                if isinstance(explainer.expected_value, (list, np.ndarray)) and len(explainer.expected_value) > 1:
+                    expected_value = explainer.expected_value[1]
+                else:
+                    expected_value = explainer.expected_value
+            elif shap_values_raw.shape[2] == 2 and shap_values_raw.shape[0] == len(X_df):
+                # Format: (n_samples, n_features, 2) - use class 1
+                shap_for_waterfall = shap_values_raw[:, :, 1]
+                if isinstance(explainer.expected_value, (list, np.ndarray)) and len(explainer.expected_value) > 1:
+                    expected_value = explainer.expected_value[1]
+                else:
+                    expected_value = explainer.expected_value
+            else:
+                # Multi-class or other format - use aligned array
+                shap_for_waterfall = shap_array
+                if isinstance(explainer.expected_value, (list, np.ndarray)):
+                    expected_value = explainer.expected_value[0] if len(explainer.expected_value) > 0 else 0
+                else:
+                    expected_value = explainer.expected_value
+        else:
+            # 2D array - already aligned
+            shap_for_waterfall = shap_array
+            expected_value = explainer.expected_value if hasattr(explainer, 'expected_value') else 0
+
+        # Ensure expected_value is a scalar
+        if isinstance(expected_value, (list, np.ndarray)):
+            expected_value = float(expected_value[0]) if len(expected_value) > 0 else 0.0
+        expected_value = float(expected_value)
+
+        # Strategy 1: Create waterfall plots for representative samples from each class
+
+        for class_val in unique_classes:
+            class_mask = preds == class_val
+            class_indices = np.where(class_mask)[0]
+
+            if len(class_indices) == 0:
+                continue
+
+            # Select up to 5 representative samples per class
+            n_samples_to_plot = min(5, len(class_indices))
+
+            # Get SHAP magnitudes for this class
+            class_shap_magnitudes = np.abs(shap_for_waterfall[class_indices]).sum(axis=1)
+
+            # Select samples: highest, median, lowest magnitude
+            sorted_idx = np.argsort(class_shap_magnitudes)
+
+            if n_samples_to_plot >= 3:
+                # High, medium, low impact samples
+                sample_positions = [0, len(sorted_idx) // 2, -1]
+                if n_samples_to_plot >= 5:
+                    sample_positions = [0, len(sorted_idx) // 4, len(sorted_idx) // 2, 3 * len(sorted_idx) // 4, -1]
+            else:
+                sample_positions = list(range(n_samples_to_plot))
+
+            selected_indices = [class_indices[sorted_idx[pos]] for pos in sample_positions[:n_samples_to_plot]]
+
+            for sample_idx in selected_indices:
+                try:
+                    # Get SHAP values and feature values for this sample
+                    sample_shap = shap_for_waterfall[sample_idx]
+                    sample_features = X_df.iloc[sample_idx].values
+
+                    # Ensure they are 1D arrays
+                    sample_shap = np.array(sample_shap).flatten()
+                    sample_features = np.array(sample_features).flatten()
+
+                    # Round all features to 1 decimal place for cleaner display
+                    sample_features_display = np.round(sample_features, 1)
+
+                    # Create explanation object for this sample
+                    explanation = shap.Explanation(
+                        values=sample_shap,
+                        base_values=float(expected_value),
+                        data=sample_features_display,
+                        feature_names=feature_names
+                    )
+
+                    # Create waterfall plot
+                    plt.figure(figsize=(10, 6))
+                    shap.waterfall_plot(explanation, show=False)
+                    plt.title(f"SHAP Waterfall Plot - Sample {sample_idx} (Class {class_val})",
+                              fontsize=12, fontweight='bold')
+                    plt.tight_layout()
+
+                    # Save plot
+                    filename = f"waterfall_sample_{sample_idx}_class_{class_val}.png"
+                    plt.savefig(os.path.join(waterfall_dir, filename), bbox_inches="tight", dpi=150)
+                    plt.close()
+
+                except Exception as e:
+                    print(f"Error creating waterfall for sample {sample_idx}: {e}")
+                    continue
+
+        # Strategy 2: Create aggregate waterfall plots per class (mean SHAP values)
+
+        for class_val in unique_classes:
+            class_mask = preds == class_val
+
+            if class_mask.sum() == 0:
+                continue
+
+            try:
+                # Calculate mean SHAP values for this class
+                mean_shap_values = shap_for_waterfall[class_mask].mean(axis=0)
+                mean_feature_values = X_df[class_mask].mean().values
+
+                # Ensure they are 1D arrays
+                mean_shap_values = np.array(mean_shap_values).flatten()
+                mean_feature_values = np.array(mean_feature_values).flatten()
+
+                # Round all features to 1 decimal place for cleaner display
+                mean_feature_values_display = np.round(mean_feature_values, 1)
+
+                # Create explanation object
+                explanation = shap.Explanation(
+                    values=mean_shap_values,
+                    base_values=float(expected_value),
+                    data=mean_feature_values_display,
+                    feature_names=feature_names
+                )
+
+                # Create waterfall plot
+                plt.figure(figsize=(10, 6))
+                shap.waterfall_plot(explanation, show=False)
+                plt.title(f"SHAP Waterfall Plot - Mean Values for Class {class_val}\n"
+                          f"({class_mask.sum()} samples)",
+                          fontsize=12, fontweight='bold')
+                plt.tight_layout()
+
+                # Save plot
+                filename = f"waterfall_mean_class_{class_val}.png"
+                plt.savefig(os.path.join(waterfall_dir, filename), bbox_inches="tight", dpi=150)
+                plt.close()
+
+            except Exception as e:
+                print(f"Error creating aggregate waterfall for class {class_val}: {e}")
+                continue
 
     print(f"\nPlots saved to: {output_dir}")

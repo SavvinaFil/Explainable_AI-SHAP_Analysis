@@ -4,5 +4,6 @@
   "output_dir": "outputs",
   "generate_plots": true,
   "save_excel": true,
-  "dataset_scope": "whole"
+  "dataset_scope": "whole",
+  "generate_notebook": true
 }

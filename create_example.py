@@ -10,7 +10,7 @@ n_samples = 1000
 # First create the ages
 ages = np.random.randint(18, 70, size=n_samples)
 
-# Calculate the max years of employment per person we suppose they started after 18 or later
+# Calculate the max years of employment per person - we suppose they started after 18 or later
 max_work_years = ages - 18
 
 # Per person years of employment can be from 0 to max_work_years
@@ -44,14 +44,6 @@ df["Loan Approved"] = (
     )
 ).astype(int)
 
-
-print("\nDataset Statistics\n")
-print(f"Total samples: {len(df)}")
-print(f"\nAge range: {df['Age'].min()} - {df['Age'].max()}")
-print(f"Income range: ${df['Income per Year'].min():,} - ${df['Income per Year'].max():,}")
-print(f"Years of Employment range: {df['Years of Employment'].min()} - {df['Years of Employment'].max()}")
-print(f"\nLoan Approved: {df['Loan Approved'].sum()} ({df['Loan Approved'].mean()*100:.1f}%)")
-print(f"Loan Rejected: {(1-df['Loan Approved']).sum()} ({(1-df['Loan Approved'].mean())*100:.1f}%)")
 
 # Save dataset
 dataset_path = "realistic_dataset.csv"

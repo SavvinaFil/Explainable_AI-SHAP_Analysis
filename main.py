@@ -9,130 +9,67 @@ from results import (
     plot_shap_values,
     save_results_to_excel
 )
+from generate_notebook import generate_analysis_notebook
 
 CONFIG_PATH = "config.json"
 
 
 def load_config():
-    try:
-        with open(CONFIG_PATH, "r") as f:
-            content = f.read().strip()
-            if not content:
-                return {}
-            return json.loads(content)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def save_config(config):
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2)
-
-
-def ask_yes_no(question):
-    while True:
-        answer = input(f"{question} (yes/no): ").strip().lower()
-        if answer in ["yes", "y"]:
-            return True
-        if answer in ["no", "n"]:
-            return False
-        print("Please answer yes or no.")
-
-
-def ask_int(question, min_val=0):
-    while True:
-        try:
-            value = int(input(question))
-            if value >= min_val:
-                return value
-        except ValueError:
-            pass
-        print(f"Please enter an integer ≥ {min_val}")
+    with open(CONFIG_PATH, "r") as f:
+        content = f.read().strip()
+        if not content:
+            raise ValueError("config.json is empty")
+        return json.loads(content)
 
 
 def main():
     print("Trustworthy AI: Decision Tree Explainability\n")
 
+    # Read config.json
     config = load_config()
-    config_changed = False
-    first_run = not bool(config)
 
-    # Reset paths and preferences
-    if not first_run:
-        if "model_path" in config or "dataset_path" in config:
-            if ask_yes_no("Do you want to reset the dataset/model paths (pkl/csv)?"):
-                if ask_yes_no("Reset model_path (.pkl)?"):
-                    config.pop("model_path", None)
-                if ask_yes_no("Reset dataset_path (.csv)?"):
-                    config.pop("dataset_path", None)
-                config_changed = True
+    # Load model and dataset from config
+    model_path = config["model_path"]
+    dataset_path = config["dataset_path"]
+    output_dir = config.get("output_dir", "outputs")
+    generate_plots = config.get("generate_plots", True)
+    save_excel = config.get("save_excel", True)
+    dataset_scope = config.get("dataset_scope", "whole")
+    generate_notebook = config.get("generate_notebook", True)
+    auto_open_notebook = config.get("auto_open_notebook", True)
 
-        if ask_yes_no("Do you want to reset other preferences?"):
-            model_path = config.get("model_path")
-            dataset_path = config.get("dataset_path")
-            output_dir = config.get("output_dir")
-            config = {}
-            if model_path:
-                config["model_path"] = model_path
-            if dataset_path:
-                config["dataset_path"] = dataset_path
-            if output_dir:
-                config["output_dir"] = output_dir
-            config_changed = True
+    print(f"Model path   : {model_path}")
+    print(f"Dataset path : {dataset_path}")
+    print(f"Output dir   : {output_dir}")
+    print(f"Plots        : {generate_plots}")
+    print(f"Save Excel   : {save_excel}")
+    print(f"Dataset scope: {dataset_scope}")
+    print(f"Generate Notebook: {generate_notebook}")
 
-    # Ask for paths if they are missing
-    if "model_path" not in config:
-        config["model_path"] = input("Enter path to the decision tree model (.pkl): ").strip()
-        config_changed = True
+    model = load_tree(model_path)
 
-    if "dataset_path" not in config:
-        config["dataset_path"] = input("Enter path to the dataset (.csv): ").strip()
-        config_changed = True
+    # Take feature names from the model
+    try:
+        feature_names = list(model.feature_names_in_)
+    except AttributeError:
+        feature_names = None
 
-    if "output_dir" not in config:
-        config["output_dir"] = input("Enter path for output folder (if not just press enter): ").strip() or "outputs"
-        config_changed = True
+    X_df = load_dataset(choice=2, feature_names=feature_names, path_override=dataset_path)
 
-    # Ask basic preferences if they are missing
-    if "generate_plots" not in config:
-        config["generate_plots"] = ask_yes_no("Do you want to generate SHAP plots?")
-        config_changed = True
+    if feature_names is None:
+        feature_names = list(X_df.columns)
 
-    if "save_excel" not in config:
-        config["save_excel"] = ask_yes_no("Do you want to save results to Excel?")
-        config_changed = True
-
-    if "dataset_scope" not in config:
-        print("\nChoose dataset scope:")
-        print("1 → Whole dataset")
-        print("2 → Subset of rows")
-        choice = ask_int("Your choice (1 or 2): ", min_val=1)
-        if choice == 1:
-            config["dataset_scope"] = "whole"
-        else:
-            config["dataset_scope"] = "subset"
-            config["subset_start"] = ask_int("Start row index: ", 0)
-            config["subset_end"] = ask_int("End row index (exclusive): ", 1)
-        config_changed = True
-
-    if config_changed or first_run:
-        save_config(config)
-        print("\nPreferences saved to config.json\n")
-
-    # Load model and dataset
-    model = load_tree(config["model_path"])
-    feature_names = list(model.feature_names_in_)
-    X_df = load_dataset(choice=2, feature_names=feature_names, path_override=config["dataset_path"])
-
-    # Apply dataset start and stop
-    if config["dataset_scope"] == "subset":
-        X_sample = X_df.iloc[config["subset_start"]:config["subset_end"]]
-        print(f"Using dataset subset [{config['subset_start']}:{config['subset_end']}]")
+    # Dataset start and stop from config
+    if dataset_scope == "subset":
+        start = config.get("subset_start", 0)
+        end = config.get("subset_end", len(X_df))
+        X_sample = X_df.iloc[start:end]
+        print(f"Using dataset subset [{start}:{end}]")
     else:
         X_sample = X_df
         print("Using full dataset")
 
-    # Compute shap values
+    # Compute Shap values
     explainer, shap_values, X_df_aligned = compute_shap_values(model, X_sample)
 
     # Calculate the predictions
@@ -140,7 +77,7 @@ def main():
         preds = model.predict(X_df_aligned)
         unique_classes, class_counts = np.unique(preds, return_counts=True)
 
-        print(f"\nModel predictions")
+        print("\nModel predictions:")
         for cls, cnt in zip(unique_classes, class_counts):
             percentage = (cnt / len(preds)) * 100
             print(f"  - Class {cls}: {cnt} samples ({percentage:.1f}%)")
@@ -148,58 +85,38 @@ def main():
         print(f"Error when calculating predictions: {e}")
         return
 
-    # Show shap values
+    # Show Shap values
     show_shap_values(shap_values, feature_names, preds)
 
     # Create output directory
-    os.makedirs(config["output_dir"], exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
 
-    # Save results to excel
-    if config["save_excel"]:
+    # Save results to Excel
+    if save_excel:
         shap_array = np.array(shap_values)
-        save_results_to_excel(X_df_aligned, shap_array, feature_names, preds, config["output_dir"])
+        save_results_to_excel(X_df_aligned, shap_array, feature_names, preds, output_dir)
     else:
-        print("Excel output disabled (saved preference).")
+        print("Excel output disabled (config).")
 
-    # Interactive plots
-    if config["generate_plots"]:
-        print("\nSelect SHAP plots to generate:")
-        plots_options = ['beeswarm', 'bar', 'violin', 'dependence', 'decision_map',
-                         'interactive_decision_map', 'heatmap', 'interactive_heatmap', 'all']
-        for i, p in enumerate(plots_options, 1):
-            print(f"{i} → {p}")
-        choice = input("Enter numbers separated by comma (e.g., 1,3,8) or for all 9: ").strip().lower()
-        selected_plots = []
+    # Create plots
+    plots_output_dir = None
+    if generate_plots:
+        selected_plots = [
+            'beeswarm',
+            'bar',
+            'violin',
+            'dependence',
+            'decision_map',
+            'interactive_decision_map',
+            'heatmap',
+            'interactive_heatmap',
+            'waterfall'
+        ]
 
-        # Check if user typed 9 (for "all")
-        if choice == "9":
-            selected_plots = ['beeswarm', 'bar', 'violin', 'dependence', 'decision_map',
-                              'interactive_decision_map', 'heatmap', 'interactive_heatmap']
-        else:
-            for c in choice.split(','):
-                c = c.strip()
-                if not c:
-                    continue
-                try:
-                    idx = int(c) - 1
-                    if 0 <= idx < len(plots_options) - 1:
-                        selected_plots.append(plots_options[idx])
-                    elif idx == len(plots_options) - 1:  # this is corresponding to "all"
-                        selected_plots = ['beeswarm', 'bar', 'violin', 'dependence', 'decision_map', 'interactive_decision_map',
-                                          'heatmap', 'interactive_heatmap']
-                        break
-                except ValueError:
-                    continue
-
-        if not selected_plots:
-            selected_plots = ['beeswarm', 'bar', 'violin', 'dependence', 'decision_map',
-                              'interactive_decision_map', 'heatmap', 'interactive_heatmap']
-
-        # Create common folder with timestamp
+        # Common folder with timestamp
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        plots_output_dir = os.path.join(config["output_dir"], f"{timestamp}_selected_plots")
+        plots_output_dir = os.path.join(output_dir, f"{timestamp}_selected_plots")
         os.makedirs(plots_output_dir, exist_ok=True)
-
 
         plot_shap_values(
             shap_values,
@@ -210,6 +127,36 @@ def main():
             selected_plots=selected_plots,
             explainer=explainer
         )
+    else:
+        print("Plot generation disabled (config).")
+
+    # Generate Jupyter Notebook with analysis
+    if generate_notebook and plots_output_dir is not None:
+        # Prepare model information for the notebook
+        model_info = {
+            'model_type': type(model).__name__,
+            'n_features': len(feature_names),
+            'n_classes': len(unique_classes),
+            'n_samples': len(X_df_aligned),
+            'feature_names': feature_names,
+            'classes': unique_classes.tolist()
+        }
+
+        try:
+            notebook_path = generate_analysis_notebook(
+                plots_output_dir,
+                model_info=model_info
+            )
+
+        except Exception as e:
+            print(f"\nΕrror generating notebook: {e}")
+            print("All plots are still available in the output directory.")
+            import traceback
+            traceback.print_exc()
+    elif not generate_plots:
+        print("\nΝotebook generation skipped (plots were not generated)")
+    else:
+        print("\nNotebook generation disabled (config).")
 
 
 if __name__ == "__main__":
