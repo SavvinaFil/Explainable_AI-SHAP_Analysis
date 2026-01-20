@@ -7,26 +7,38 @@ from datetime import datetime
 
 
 def create_markdown_cell(text):
-    """Create a markdown cell with given text."""
     return nbf.v4.new_markdown_cell(text)
 
 
 def create_code_cell(code):
-    """Create a code cell with given code."""
     return nbf.v4.new_code_cell(code)
 
 
-def create_image_markdown(image_path, title=""):
-    """Create markdown cell with embedded image."""
-    # Use markdown image syntax for embedded display
+def create_image_display_code(image_path, title=""):
     rel_path = image_path.replace('\\', '/')  # Convert Windows paths to forward slashes
-    markdown = f"### {title}\n\n"
-    markdown += f"![{title}]({rel_path})"
-    return markdown
+    code = f"""# {title}
+from IPython.display import Image, display
+display(Image(filename='{rel_path}'))"""
+    return code
+
+
+def create_image_html(image_path, title=""):
+    rel_path = image_path.replace('\\', '/')  # Convert Windows paths to forward slashes
+    html = f"""### {title}
+
+<img src="{rel_path}" alt="{title}" style="max-width:100%; height:auto;">"""
+    return html
+
+
+def create_html_embed_code(html_path, height=600):
+    rel_path = html_path.replace('\\', '/')
+    code = f"""from IPython.display import IFrame
+IFrame(src='{rel_path}', width='100%', height={height})"""
+    return code
 
 
 def get_plot_explanation(plot_type):
-    """Get explanation text for each plot type."""
+    #Get explanation text for each plot type
     explanations = {
         'beeswarm': """
 ## SHAP Beeswarm Plot
@@ -154,27 +166,32 @@ The **Waterfall Plot** shows how each feature contributes to moving the predicti
 - Income > 60k: +0.21 → Strong positive contribution (increases approval chance)
 - Age > 50: +0.11 → Moderate positive contribution
 - Final prediction: 0.925 → High approval probability
+""",
+
+        'interactive': """
+## Interactive Visualization
+
+This is an **interactive plot** embedded directly in the notebook. You can:
+- Hover over elements to see detailed information
+- Zoom in/out using your mouse or trackpad
+- Pan across the visualization
+- Click on legend items to toggle visibility
+
+**Note:** The plot is fully interactive within this notebook - no need to open external files!
 """
     }
     return explanations.get(plot_type, "")
 
 
 def generate_notebook(plots_dir, output_path, model_info=None):
-    """
-    Generate a Jupyter notebook with all plots and explanations.
-
-    Args:
-        plots_dir: Directory containing the plots
-        output_path: Path where to save the notebook
-        model_info: Optional dictionary with model information
-    """
+    #Generate a Jupyter notebook with all plots and explanations
 
     # Create new notebook
     nb = nbf.v4.new_notebook()
     cells = []
 
     # Add title and introduction
-    title = f"""# Explainable AI Analysis Report
+    title = f"""# Model Agnostic Explainability Analysis for any AI decision tree
 ## Decision Tree Model Explainability with SHAP
 
 **Generated on:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
@@ -222,74 +239,85 @@ SHAP values provide a unified measure of feature importance and show how each fe
             'anchor': 'feature-importance',
             'pattern': '**/shap_bar_class_*.png',
             'type': 'bar',
-            'description': 'Overall feature importance ranked by mean absolute SHAP value.'
+            'description': 'Overall feature importance ranked by mean absolute SHAP value.',
+            'is_interactive': False
         },
         {
             'name': 'Beeswarm Plots',
             'anchor': 'beeswarm-plots',
             'pattern': '**/shap_beeswarm_class_*.png',
             'type': 'beeswarm',
-            'description': 'Distribution of SHAP values showing feature impacts across all samples.'
+            'description': 'Distribution of SHAP values showing feature impacts across all samples.',
+            'is_interactive': False
         },
         {
             'name': 'Violin Plots',
             'anchor': 'violin-plots',
             'pattern': '**/shap_violin_class_*.png',
             'type': 'violin',
-            'description': 'Density distribution of SHAP values for each feature.'
+            'description': 'Density distribution of SHAP values for each feature.',
+            'is_interactive': False
         },
         {
             'name': 'Feature Dependence Plots',
             'anchor': 'dependence-plots',
             'pattern': '**/dependence_*.png',
             'type': 'dependence',
-            'description': 'Relationship between feature values and their SHAP contributions.'
+            'description': 'Relationship between feature values and their SHAP contributions.',
+            'is_interactive': False
         },
         {
             'name': 'Decision Plots',
             'anchor': 'decision-plots',
             'pattern': '**/shap_decision_*.png',
             'type': 'decision_map',
-            'description': 'Visualization of prediction paths from base value to final prediction.'
+            'description': 'Visualization of prediction paths from base value to final prediction.',
+            'is_interactive': False
         },
         {
             'name': 'Interactive Decision Plots',
             'anchor': 'interactive-decision',
             'pattern': '**/shap_decision_*_interactive.html',
             'type': 'interactive',
-            'description': 'Interactive visualization of decision paths (HTML files - open separately).'
+            'description': 'Interactive visualization of decision paths - fully interactive within this notebook!',
+            'is_interactive': True,
+            'height': 850
         },
         {
             'name': 'SHAP Heatmaps',
             'anchor': 'heatmaps',
             'pattern': '**/shap_heatmap_*.png',
             'type': 'heatmap',
-            'description': 'Heatmap showing SHAP values across all samples and features.'
+            'description': 'Heatmap showing SHAP values across all samples and features.',
+            'is_interactive': False
         },
         {
             'name': 'Interactive Heatmaps',
             'anchor': 'interactive-heatmaps',
             'pattern': '**/shap_interactive_heatmap_*.html',
             'type': 'interactive',
-            'description': 'Interactive heatmap (HTML file - open separately).'
+            'description': 'Interactive heatmap - fully interactive within this notebook!',
+            'is_interactive': True,
+            'height': 650
         },
         {
             'name': 'Waterfall Plots - Individual Samples',
             'anchor': 'waterfall-plots',
             'pattern': '**/waterfall_plots/waterfall_sample_*.png',
             'type': 'waterfall',
-            'description': 'Individual sample explanations showing feature contributions.'
+            'description': 'Individual sample explanations showing feature contributions.',
+            'is_interactive': False
         },
         {
             'name': 'Waterfall Plots - Class Averages',
             'anchor': 'waterfall-mean',
             'pattern': '**/waterfall_plots/waterfall_mean_*.png',
             'type': 'waterfall',
-            'description': 'Average feature contributions per class.'
+            'description': 'Average feature contributions per class.',
+            'is_interactive': False
         }
     ]
 
-    # Process each section
     for section in plot_sections:
         # Find plots matching pattern
         plot_files = glob.glob(os.path.join(plots_dir, section['pattern']), recursive=True)
@@ -324,22 +352,19 @@ SHAP values provide a unified measure of feature importance and show how each fe
             filename = os.path.basename(plot_file)
             title = filename.replace('_', ' ').replace('.png', '').replace('.html', '').title()
 
-            if plot_file.endswith('.html'):
-                # For HTML files, add a link instead of embedding
-                html_text = f"""
-### {title}
+            if section.get('is_interactive', False) and plot_file.endswith('.html'):
+                # For interactive HTML files, embed them directly using IFrame
+                cells.append(create_markdown_cell(f"### {title}\n"))
 
-This is an interactive plot. To view it:
-1. Navigate to: `{rel_path}`
-2. Open the HTML file in your web browser
+                # Create code cell with IFrame to display the interactive plot
+                height = section.get('height', 600)
+                embed_code = create_html_embed_code(rel_path, height)
+                cells.append(create_code_cell(embed_code))
 
-Or click here if viewing in Jupyter: [Open Interactive Plot]({rel_path})
-"""
-                cells.append(create_markdown_cell(html_text))
             else:
-                # For image files, embed them as markdown images
-                image_markdown = create_image_markdown(rel_path, title)
-                cells.append(create_markdown_cell(image_markdown))
+                # For image files, use HTML img tag in markdown for immediate display
+                image_html = create_image_html(rel_path, title)
+                cells.append(create_markdown_cell(image_html))
 
     # Add conclusion
     conclusion = """
@@ -347,7 +372,7 @@ Or click here if viewing in Jupyter: [Open Interactive Plot]({rel_path})
 
 ## Summary and Next Steps
 
-This report provides a comprehensive view of how your decision tree model makes predictions using SHAP values.
+This report provides a comprehensive view of how your decision tree AI model makes predictions using SHAP values.
 
 ### Key Takeaways:
 1. **Feature Importance**: Identify which features drive your model's decisions
@@ -360,6 +385,7 @@ This report provides a comprehensive view of how your decision tree model makes 
 - Investigate unexpected patterns in dependence plots
 - Use waterfall plots to explain individual predictions to stakeholders
 - Compare decision paths between different classes using decision plots
+- Interact with the embedded visualizations to explore your data in detail
 
 ### For More Information:
 - SHAP Documentation: https://shap.readthedocs.io/
@@ -379,10 +405,7 @@ This report provides a comprehensive view of how your decision tree model makes 
         nbf.write(nb, f)
 
 
-
 def open_notebook(notebook_path):
-
-    # Get absolute path
     abs_notebook_path = os.path.abspath(notebook_path)
 
     # Try different methods in order of preference
@@ -409,7 +432,6 @@ def open_notebook(notebook_path):
                     creationflags=subprocess.CREATE_NEW_CONSOLE if sys.platform == 'win32' else 0
                 )
 
-
                 # Wait a bit for the server to start
                 import time
                 time.sleep(3)
@@ -433,7 +455,6 @@ def open_notebook(notebook_path):
 
 
 def generate_analysis_notebook(plots_output_dir, model_info=None):
-
     # Create notebook filename with timestamp
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     notebook_name = f"SHAP_Analysis_Report_{timestamp}.ipynb"
@@ -443,5 +464,3 @@ def generate_analysis_notebook(plots_output_dir, model_info=None):
     generate_notebook(plots_output_dir, notebook_path, model_info)
 
     return notebook_path
-
-

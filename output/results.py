@@ -450,7 +450,7 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir, select
 
         ax.set_xlabel(f"Samples (sorted by class: {', '.join(map(str, unique_classes))})", fontsize=10)
         ax.set_ylabel("Features (sorted by mean |SHAP|)", fontsize=10)
-        ax.set_title("SHAP Heatmap - Όλα τα δείγματα", fontsize=12, fontweight='bold')
+        ax.set_title("SHAP Heatmap - All samples", fontsize=12, fontweight='bold')
 
         current_pos = 0
         for i, class_val in enumerate(unique_classes[:-1]):
