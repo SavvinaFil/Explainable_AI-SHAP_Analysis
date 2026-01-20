@@ -1,4 +1,4 @@
-# Explainability  Analysis Toolbox
+# AI Explainability
 
 **Model agnostic explainability analysis of any AI tool.**
 
