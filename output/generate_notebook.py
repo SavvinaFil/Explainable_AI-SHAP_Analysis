@@ -15,7 +15,7 @@ def create_code_cell(code):
 
 
 def create_image_display_code(image_path, title=""):
-    rel_path = image_path.replace('\\', '/')  # Convert Windows paths to forward slashes
+    rel_path = image_path.replace('\\', '/')
     code = f"""# {title}
 from IPython.display import Image, display
 display(Image(filename='{rel_path}'))"""
@@ -23,7 +23,7 @@ display(Image(filename='{rel_path}'))"""
 
 
 def create_image_html(image_path, title=""):
-    rel_path = image_path.replace('\\', '/')  # Convert Windows paths to forward slashes
+    rel_path = image_path.replace('\\', '/')
     html = f"""### {title}
 
 <img src="{rel_path}" alt="{title}" style="max-width:100%; height:auto;">"""
@@ -38,7 +38,6 @@ IFrame(src='{rel_path}', width='100%', height={height})"""
 
 
 def get_plot_explanation(plot_type):
-    #Get explanation text for each plot type
     explanations = {
         'beeswarm': """
 ## SHAP Beeswarm Plot
@@ -161,70 +160,50 @@ The **Waterfall Plot** shows how each feature contributes to moving the predicti
 - **Magnitude**: How much each feature contributed
 - **Cumulative effect**: How contributions add up to reach the final prediction
 
-**For loan approval example:**
-- Base value (~0.48): Average probability across all applicants
-- Income > 60k: +0.21 → Strong positive contribution (increases approval chance)
-- Age > 50: +0.11 → Moderate positive contribution
-- Final prediction: 0.925 → High approval probability
+**Example interpretation:**
+- Base value: Average probability across all samples
+- High income: Strong positive contribution (increases prediction)
+- High age: Moderate positive contribution
+- Final prediction: High probability for the predicted class
 """,
 
         'interactive': """
 ## Interactive Visualization
 
-This is an **interactive plot** embedded directly in the notebook. You can:
+This is an **interactive plot** that can be viewed in your web browser. Features include:
 - Hover over elements to see detailed information
 - Zoom in/out using your mouse or trackpad
 - Pan across the visualization
 - Click on legend items to toggle visibility
 
-**Note:** The plot is fully interactive within this notebook - no need to open external files!
+**Note:** These plots are saved as HTML files in the output folder for the best interactive experience!
 """
     }
     return explanations.get(plot_type, "")
 
 
 def generate_notebook(plots_dir, output_path, model_info=None):
-    #Generate a Jupyter notebook with all plots and explanations
-
-    # Create new notebook
     nb = nbf.v4.new_notebook()
     cells = []
 
-    # Add title and introduction
-    title = f"""# Model Agnostic Explainability Analysis for any AI decision tree
-## Decision Tree Model Explainability with SHAP
+    output_labels = model_info.get('output_labels', {}) if model_info else {}
+
+    title = f"""# Model agnostic explainability analysis of any AI tool. \n\n This is the explainability analysis toolbox for the AI-EFFECT project. It is model agnostic, and can take any AI tool as input and returns a clear explanation of your tool.
+
+## AI Model Explainability Analysis with SHAP
 
 **Generated on:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
-This notebook contains a comprehensive explainability analysis of your decision tree model using SHAP (SHapley Additive exPlanations) values.
+This notebook contains a comprehensive explainability analysis of your model using SHAP (SHapley Additive exPlanations) values.
 
 SHAP values provide a unified measure of feature importance and show how each feature contributes to individual predictions.
 """
     cells.append(create_markdown_cell(title))
 
-    # Add SHAP explanation section
     shap_intro = """
 ## What is SHAP?
 
 **SHAP (SHapley Additive exPlanations)** is a game-theoretic approach to explain the output of any machine learning model. It connects optimal credit allocation with local explanations using the classic Shapley values from game theory and their related extensions.
-
-### Key Principles:
-
-**1. Unified Framework**
-- SHAP values unify multiple existing methods (LIME, DeepLIFT, Layer-Wise Relevance Propagation, etc.)
-- Provides a single, theoretically sound approach to model interpretation
-
-**2. Local Explanations**
-- Explains individual predictions by computing the contribution of each feature
-- Shows how each feature value pushes the prediction away from the base value (average model output)
-
-**3. Consistency and Accuracy**
-- Based on Shapley values from cooperative game theory
-- Satisfies desirable properties: local accuracy, missingness, and consistency
-
-**4. Model-Agnostic Approach**
-- Works with any machine learning model
-- For tree-based models (like Random Forests, XGBoost), SHAP provides exact solutions efficiently
 
 ### How SHAP Values Work:
 
@@ -246,19 +225,23 @@ TreeExplainer, the algorithm used in this analysis, provides:
 """
     cells.append(create_markdown_cell(shap_intro))
 
-    # Add model information if provided
     if model_info:
+        classes_display = []
+        for cls in model_info.get('classes', []):
+            class_label = output_labels.get(str(int(cls)), f"Class {cls}")
+            classes_display.append(f"{cls} ({class_label})")
+
         info_text = f"""
 ## Model Information
 
 - **Model Type:** {model_info.get('model_type', 'N/A')}
 - **Number of Features:** {model_info.get('n_features', 'N/A')}
 - **Number of Classes:** {model_info.get('n_classes', 'N/A')}
+- **Output Classes:** {', '.join(classes_display) if classes_display else 'N/A'}
 - **Total Samples Analyzed:** {model_info.get('n_samples', 'N/A')}
 """
         cells.append(create_markdown_cell(info_text))
 
-    # Add table of contents
     toc = """
 ## Table of Contents
 
@@ -276,20 +259,28 @@ TreeExplainer, the algorithm used in this analysis, provides:
 """
     cells.append(create_markdown_cell(toc))
 
-    # Define plot order and their patterns
     plot_sections = [
+        {
+            'name': 'Feature Importance - Unified (All Classes)',
+            'anchor': 'unified-feature-importance',
+            'pattern': '**/shap_bar_unified.png',
+            'type': 'bar',
+            'description': 'Overall feature importance averaged across all classes, ranked by mean absolute SHAP value.',
+            'is_interactive': False
+        },
         {
             'name': 'Feature Importance',
             'anchor': 'feature-importance',
-            'pattern': '**/shap_bar_class_*.png',
+            'pattern': '**/shap_bar_*.png',
             'type': 'bar',
             'description': 'Overall feature importance ranked by mean absolute SHAP value.',
-            'is_interactive': False
+            'is_interactive': False,
+            'exclude_pattern': '**/shap_bar_unified.png'  # Exclude unified to avoid duplicate
         },
         {
             'name': 'Beeswarm Plots',
             'anchor': 'beeswarm-plots',
-            'pattern': '**/shap_beeswarm_class_*.png',
+            'pattern': '**/shap_beeswarm_*.png',
             'type': 'beeswarm',
             'description': 'Distribution of SHAP values showing feature impacts across all samples.',
             'is_interactive': False
@@ -297,7 +288,7 @@ TreeExplainer, the algorithm used in this analysis, provides:
         {
             'name': 'Violin Plots',
             'anchor': 'violin-plots',
-            'pattern': '**/shap_violin_class_*.png',
+            'pattern': '**/shap_violin_*.png',
             'type': 'violin',
             'description': 'Density distribution of SHAP values for each feature.',
             'is_interactive': False
@@ -323,7 +314,7 @@ TreeExplainer, the algorithm used in this analysis, provides:
             'anchor': 'interactive-decision',
             'pattern': '**/shap_decision_*_interactive.html',
             'type': 'interactive',
-            'description': 'Interactive visualization of decision paths - fully interactive within this notebook!',
+            'description': 'Interactive visualization of decision paths.',
             'is_interactive': True,
             'height': 850
         },
@@ -340,7 +331,7 @@ TreeExplainer, the algorithm used in this analysis, provides:
             'anchor': 'interactive-heatmaps',
             'pattern': '**/shap_interactive_heatmap_*.html',
             'type': 'interactive',
-            'description': 'Interactive heatmap - fully interactive within this notebook!',
+            'description': 'Interactive heatmap visualization.',
             'is_interactive': True,
             'height': 650
         },
@@ -363,16 +354,18 @@ TreeExplainer, the algorithm used in this analysis, provides:
     ]
 
     for section in plot_sections:
-        # Find plots matching pattern
         plot_files = glob.glob(os.path.join(plots_dir, section['pattern']), recursive=True)
+
+        # **NEW: Exclude files matching exclude_pattern**
+        if section.get('exclude_pattern'):
+            exclude_files = set(glob.glob(os.path.join(plots_dir, section['exclude_pattern']), recursive=True))
+            plot_files = [f for f in plot_files if f not in exclude_files]
 
         if not plot_files:
             continue
 
-        # Sort files for consistent ordering
         plot_files.sort()
 
-        # Add section header
         section_header = f"""
 ---
 <a id='{section['anchor']}'></a>
@@ -382,35 +375,46 @@ TreeExplainer, the algorithm used in this analysis, provides:
 """
         cells.append(create_markdown_cell(section_header))
 
-        # Add plot type explanation
         explanation = get_plot_explanation(section['type'])
         if explanation:
             cells.append(create_markdown_cell(explanation))
 
-        # Add each plot
+        # **CHANGED: Skip interactive plots in notebook, just reference them**
+        if section.get('is_interactive', False):
+            interactive_note = f"""
+### Interactive Plots Available
+
+Interactive {section['name'].lower()} are available in the output folder but not embedded in this notebook for optimal performance.
+
+**To view interactive plots:**
+1. Navigate to the output folder: `{plots_dir}`
+2. Look for files matching pattern: `{section['pattern'].replace('**/', '')}`
+3. Open the `.html` files in your web browser
+
+**Features of interactive plots:**
+- Hover over elements for detailed information
+- Zoom and pan to explore the data
+- Click legend items to toggle visibility
+- Fully interactive experience in your browser
+
+**Found {len(plot_files)} interactive plot(s) for this section.**
+
+---
+
+*Interactive plots provide the best experience when opened directly in a web browser.*
+"""
+            cells.append(create_markdown_cell(interactive_note))
+            continue  # Skip to next section, don't embed
+
         for plot_file in plot_files:
-            # Get relative path from plots_dir
             rel_path = os.path.relpath(plot_file, plots_dir)
 
-            # Extract meaningful title from filename
             filename = os.path.basename(plot_file)
             title = filename.replace('_', ' ').replace('.png', '').replace('.html', '').title()
 
-            if section.get('is_interactive', False) and plot_file.endswith('.html'):
-                # For interactive HTML files, embed them directly using IFrame
-                cells.append(create_markdown_cell(f"### {title}\n"))
+            image_html = create_image_html(rel_path, title)
+            cells.append(create_markdown_cell(image_html))
 
-                # Create code cell with IFrame to display the interactive plot
-                height = section.get('height', 600)
-                embed_code = create_html_embed_code(rel_path, height)
-                cells.append(create_code_cell(embed_code))
-
-            else:
-                # For image files, use HTML img tag in markdown for immediate display
-                image_html = create_image_html(rel_path, title)
-                cells.append(create_markdown_cell(image_html))
-
-    # Add conclusion
     conclusion = """
 ---
 
@@ -429,7 +433,7 @@ This report provides a comprehensive view of how your decision tree AI model mak
 - Investigate unexpected patterns in dependence plots
 - Use waterfall plots to explain individual predictions to stakeholders
 - Compare decision paths between different classes using decision plots
-- Interact with the embedded visualizations to explore your data in detail
+- **Open the interactive HTML plots** in the output folder for full exploration capabilities
 
 ### For More Information:
 - SHAP Documentation: https://shap.readthedocs.io/
@@ -441,70 +445,17 @@ This report provides a comprehensive view of how your decision tree AI model mak
 """
     cells.append(create_markdown_cell(conclusion))
 
-    # Add all cells to notebook
     nb['cells'] = cells
 
-    # Write notebook to file
     with open(output_path, 'w', encoding='utf-8') as f:
         nbf.write(nb, f)
 
 
-def open_notebook(notebook_path):
-    abs_notebook_path = os.path.abspath(notebook_path)
-
-    # Try different methods in order of preference
-    methods = [
-        ('Jupyter Notebook', ['jupyter', 'notebook', abs_notebook_path]),
-        ('JupyterLab', ['jupyter', 'lab', abs_notebook_path]),
-    ]
-
-    for name, command in methods:
-        try:
-            # Check if command exists first
-            check_result = subprocess.run(
-                command[:2] + ['--version'],
-                capture_output=True,
-                timeout=5,
-                text=True
-            )
-            if check_result.returncode == 0:
-                # Command exists, try to open notebook
-                process = subprocess.Popen(
-                    command,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    creationflags=subprocess.CREATE_NEW_CONSOLE if sys.platform == 'win32' else 0
-                )
-
-                # Wait a bit for the server to start
-                import time
-                time.sleep(3)
-
-                return True
-        except (FileNotFoundError, subprocess.TimeoutExpired, Exception) as e:
-            continue
-
-    try:
-        if sys.platform == 'win32':
-            os.startfile(abs_notebook_path)
-            return True
-        elif sys.platform == 'darwin':  # macOS
-            subprocess.Popen(['open', abs_notebook_path])
-            return True
-        else:  # linux
-            subprocess.Popen(['xdg-open', abs_notebook_path])
-            return True
-    except Exception as e:
-        return False
-
-
 def generate_analysis_notebook(plots_output_dir, model_info=None):
-    # Create notebook filename with timestamp
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     notebook_name = f"SHAP_Analysis_Report_{timestamp}.ipynb"
     notebook_path = os.path.join(plots_output_dir, notebook_name)
 
-    # Generate the notebook
     generate_notebook(plots_output_dir, notebook_path, model_info)
 
     return notebook_path
