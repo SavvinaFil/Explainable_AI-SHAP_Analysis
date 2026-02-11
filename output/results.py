@@ -34,7 +34,6 @@ def compute_shap_values(model, X_df):
     model_class_name = type(model).__name__
 
     if model_class_name in ['MultiOutputRegressor', 'MultiOutputClassifier']:
-        print(f"⚠Detected MultiOutput wrapper, unwrapping to base estimator...")
         model = model.estimators_[0]
         print(f"Using base model: {type(model).__name__}")
 
@@ -77,7 +76,7 @@ def show_shap_values(shap_array, feature_names, preds=None, output_labels=None):
         print("-" * 40)
 
     if len(shap_array) > max_samples:
-        print(f"... (showing first {max_samples} of {len(shap_array)} samples)")
+        print(f"(showing first {max_samples} of {len(shap_array)} samples)")
         print("-" * 40)
 
 
@@ -312,7 +311,8 @@ def create_waterfall_plots(shap_values, shap_array, X_df, feature_names, preds,
 
 def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir,
                      selected_plots=None, explainer=None, output_labels=None,
-                     is_multi_output=False, all_outputs=None, model=None):
+                     is_multi_output=False, all_outputs=None, model=None,
+                     all_explainers=None):
     os.makedirs(output_dir, exist_ok=True)
     shap_array = np.array(shap_values)
     class_mapping = get_class_mapping(preds, output_labels)
@@ -348,8 +348,6 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir,
 
         for idx in range(num_outputs):
             name = output_names[idx]
-            print(f"  [{idx + 1}/{num_outputs}] {name}")
-
             try:
                 explainer_out = shap.TreeExplainer(model.estimators_[idx])
                 shap_out = np.array(explainer_out.shap_values(X_df))
@@ -427,7 +425,7 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir,
                 plt.savefig(os.path.join(output_dir, "shap_bar_unified.png"), bbox_inches="tight", dpi=150)
                 plt.close()
 
-            if 'beeswarm' in selected_plots:
+            '''if 'beeswarm' in selected_plots:
                 stacked = np.vstack(all_shap)
                 stacked_X = pd.concat([X_df] * num_outputs, ignore_index=True)
 
@@ -436,7 +434,7 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir,
                 plt.title(f"SHAP Beeswarm - Unified ({num_outputs} outputs)", fontsize=12, fontweight='bold')
                 plt.tight_layout()
                 plt.savefig(os.path.join(output_dir, "shap_beeswarm_unified.png"), bbox_inches="tight", dpi=150)
-                plt.close()
+                plt.close()'''
 
             if 'dependence' in selected_plots:
                 stacked = np.vstack(all_shap)
@@ -444,7 +442,6 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir,
 
                 for feat in feature_names:
                     plt.figure(figsize=(10, 7))
-                    # CRITICAL FIX: Pass features directly
                     shap.dependence_plot(feat, stacked, stacked_X, show=False)
                     plt.title(f"SHAP Dependence: {feat} - Unified ({num_outputs} outputs)", fontsize=12,
                               fontweight='bold')
@@ -454,9 +451,106 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir,
                                 dpi=150)
                     plt.close()
 
+        # Waterfall plots for multi-output regression
+        if 'waterfall' in selected_plots and all_explainers is not None:
+            waterfall_dir = os.path.join(output_dir, 'waterfall_plots')
+            os.makedirs(waterfall_dir, exist_ok=True)
+
+            # Number of samples to plot per output
+            n_samples_to_plot = min(10, len(X_df))
+
+            for idx in range(num_outputs):
+                name = output_names[idx]
+                safe_name = name.replace(" ", "_")
+
+                try:
+                    # Get SHAP values and explainer for this output
+                    explainer_out = all_explainers[idx]
+                    shap_out = np.array(explainer_out.shap_values(X_df))
+                    if shap_out.ndim > 2:
+                        shap_out = shap_out[:, :, 0]
+                    if shap_out.ndim == 1:
+                        shap_out = shap_out.reshape(1, -1)
+
+                    expected_value = explainer_out.expected_value
+
+                    # Get actual predictions for this output
+                    output_predictions = all_outputs[:, idx]
+
+                    # Individual sample waterfalls
+                    for i in range(n_samples_to_plot):
+                        try:
+                            # Ensure proper array shapes
+                            sample_shap = np.array(shap_out[i]).flatten()
+                            sample_features = np.array(X_df.iloc[i].values).flatten()
+                            pred_value = float(output_predictions[i])
+
+                            # Convert expected_value to scalar if needed
+                            if isinstance(expected_value, (list, np.ndarray)):
+                                base_val = float(expected_value[0]) if len(expected_value) > 0 else 0.0
+                            else:
+                                base_val = float(expected_value)
+
+                            explanation = shap.Explanation(
+                                values=sample_shap,
+                                base_values=base_val,
+                                data=sample_features,
+                                feature_names=feature_names
+                            )
+
+                            plt.figure(figsize=(10, 6))
+                            shap.waterfall_plot(explanation, show=False)
+                            plt.title(f'Waterfall - Sample {i} - {name}\n(Prediction: {pred_value:.4f})',
+                                      fontsize=12, fontweight='bold')
+                            plt.tight_layout()
+
+                            filename = f"waterfall_sample_{i}_{safe_name}.png"
+                            plt.savefig(os.path.join(waterfall_dir, filename), bbox_inches="tight", dpi=150)
+                            plt.close()
+                        except Exception as e:
+                            print(f"    Error creating waterfall for sample {i}, {name}: {e}")
+                            plt.close()
+
+                    # Mean waterfall for this output
+                    try:
+                        # Ensure proper array shapes
+                        mean_shap = np.array(shap_out.mean(axis=0)).flatten()
+                        mean_features = np.array(X_df.mean().values).flatten()
+                        mean_pred = float(output_predictions.mean())
+
+                        # Convert expected_value to scalar if needed
+                        if isinstance(expected_value, (list, np.ndarray)):
+                            base_val = float(expected_value[0]) if len(expected_value) > 0 else 0.0
+                        else:
+                            base_val = float(expected_value)
+
+                        explanation = shap.Explanation(
+                            values=mean_shap,
+                            base_values=base_val,
+                            data=mean_features,
+                            feature_names=feature_names
+                        )
+
+                        plt.figure(figsize=(10, 6))
+                        shap.waterfall_plot(explanation, show=False)
+                        plt.title(f'Waterfall - Mean Values - {name}\n(Mean Prediction: {mean_pred:.4f})',
+                                  fontsize=12, fontweight='bold')
+                        plt.tight_layout()
+
+                        filename = f"waterfall_mean_{safe_name}.png"
+                        plt.savefig(os.path.join(waterfall_dir, filename), bbox_inches="tight", dpi=150)
+                        plt.close()
+
+                    except Exception as e:
+                        print(f"    Error creating mean waterfall for {name}: {e}")
+                        plt.close()
+
+                except Exception as e:
+                    print(f"    Error processing waterfall plots for {name}: {e}")
+                    continue
+
         print(f"All plots saved to: {output_dir}\n")
         return
-
 
     for class_val in unique_classes:
         mask = preds == class_val
@@ -545,7 +639,6 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir,
                 plt.close()
             except Exception as e:
                 print(f"Error creating decision plot for {class_label}: {e}")
-
 
     # Unified Decision Plot (binary only)
     if 'decision_map' in selected_plots and n_classes == 2:
@@ -771,7 +864,7 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir,
 
                 fig.update_layout(
                     title=f"Interactive SHAP Heatmap ({len(shap_sorted)} samples, {n_classes} classes)",
-                    xaxis_title=f"Ence (sorted by class: {class_labels_str})",
+                    xaxis_title=f"Samples (sorted by class: {class_labels_str})",
                     yaxis_title="Features (sorted by mean |SHAP|)",
                     height=600
                 )
@@ -811,7 +904,6 @@ def plot_shap_values(shap_values, X_df, feature_names, preds, output_dir,
             print(f"Error creating unified bar plot: {e}")
 
     if 'dependence' in selected_plots:
-        print(f"\nCreating unified dependence plots...")
         for feat in feature_names:
             try:
                 plt.figure(figsize=(10, 7))

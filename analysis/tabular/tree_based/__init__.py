@@ -15,7 +15,6 @@ from output.generate_notebook import generate_analysis_notebook
 
 def is_classifier(model):
     # Determine if the model is classifier or regressor
-    # Handle MultiOutput wrappers
     if hasattr(model, 'estimators_'):
         # Check the base estimator
         base_model = model.estimators_[0] if model.estimators_ else model
@@ -61,7 +60,7 @@ def convert_regression_to_classes(predictions, n_bins=5):
 
 
 def validate_model(model, expected_package, expected_model_type):
-    # Validate that the loaded model matches the expected package and type.
+    # Validate that the loaded model matches the expected package and type
     model_class_name = type(model).__name__
     model_module = type(model).__module__
 
@@ -152,6 +151,15 @@ def run_tabular_analysis(config):
     is_multi_output = hasattr(model, 'estimators_') and len(model.estimators_) > 1
     num_outputs = len(model.estimators_) if is_multi_output else 1
 
+    # For multi-output models, create explainers list for waterfall plots
+    if is_multi_output and not is_classification and hasattr(model, 'estimators_'):
+        all_explainers = []
+        for estimator in model.estimators_:
+            exp = shap.TreeExplainer(estimator)
+            all_explainers.append(exp)
+    else:
+        all_explainers = None
+
     # Calculate the predictions
     try:
         preds = model.predict(X_df_aligned)
@@ -174,20 +182,12 @@ def run_tabular_analysis(config):
                 class_label = output_labels.get(str(int(cls)), f"Class {cls}")
                 print(f"  - {class_label}: {cnt} samples ({percentage:.1f}%)")
 
-            # Keep predictions as-is for classification (NO binning!)
-            # preds is already set correctly above
-
         else:
-            # If regression convert continuous predictions to bins for visualization
-            print(f"\nRegression Output Statistics:")
-            print(f"  Range: [{preds_for_main.min():.2f}, {preds_for_main.max():.2f}]")
-            print(f"  Mean: {preds_for_main.mean():.2f}, Std: {preds_for_main.std():.2f}")
-
             # Convert to classes for visualization purposes
             n_bins = config.get("regression_bins", 5)
             preds_binned, bin_edges, auto_labels = convert_regression_to_classes(preds_for_main, n_bins=n_bins)
 
-            # For regression, use auto-generated labels for bins, NOT output_labels
+            # For regression, use auto-generated labels for bins, not output_labels
             bin_labels_for_display = auto_labels  # Use auto-generated bin ranges
 
             # Update predictions to binned version for plotting
@@ -260,7 +260,8 @@ def run_tabular_analysis(config):
             # For classification: original labels, for regression: output names
             is_multi_output=is_multi_output and not is_classification,  # Only for multi-output regression
             all_outputs=all_outputs if not is_classification else None,
-            model=model if not is_classification else None
+            model=model if not is_classification else None,
+            all_explainers=all_explainers  # Pass explainers for waterfall plots
         )
     else:
         print("Plot generation disabled (config).")
@@ -289,7 +290,7 @@ def run_tabular_analysis(config):
                 plots_output_dir,
                 model_info=model_info
             )
-            print(f"\nNotebook generated: {notebook_path}")
+            print(f"Notebook generated: {notebook_path}")
 
         except Exception as e:
             print(f"\nError generating notebook: {e}")
