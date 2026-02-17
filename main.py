@@ -1,163 +1,36 @@
 import json
-import numpy as np
 import os
-from datetime import datetime
-from tree_input import load_tree, load_dataset
-from results import (
-    compute_shap_values,
-    show_shap_values,
-    plot_shap_values,
-    save_results_to_excel
-)
-from generate_notebook import generate_analysis_notebook
-
-CONFIG_PATH = "config.json"
-
-
-def load_config():
-    with open(CONFIG_PATH, "r") as f:
-        content = f.read().strip()
-        if not content:
-            raise ValueError("config.json is empty")
-        return json.loads(content)
+from analysis import ANALYSIS_ROUTER
 
 
 def main():
-    print("Trustworthy AI: Decision Tree Explainability\n")
+    # Get the directory where the script is located
+    base_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # Read config.json
-    config = load_config()
+    config_path = os.path.join(base_dir, "config.json")
 
-    # Load model and dataset from config
-    model_path = config["model_path"]
-    dataset_path = config["dataset_path"]
-    output_dir = config.get("output_dir", "outputs")
-    generate_plots = config.get("generate_plots", True)
-    save_excel = config.get("save_excel", True)
-    dataset_scope = config.get("dataset_scope", "whole")
-    generate_notebook = config.get("generate_notebook", True)
-    auto_open_notebook = config.get("auto_open_notebook", True)
-
-    print(f"Model path   : {model_path}")
-    print(f"Dataset path : {dataset_path}")
-    print(f"Output dir   : {output_dir}")
-    print(f"Plots        : {generate_plots}")
-    print(f"Save Excel   : {save_excel}")
-    print(f"Dataset scope: {dataset_scope}")
-    print(f"Generate Notebook: {generate_notebook}")
-
-    model = load_tree(model_path)
-
-    # Take feature names from the model
-    try:
-        feature_names = list(model.feature_names_in_)
-    except AttributeError:
-        feature_names = None
-
-    X_df = load_dataset(choice=2, feature_names=feature_names, path_override=dataset_path)
-
-    if feature_names is None:
-        feature_names = list(X_df.columns)
-
-    # Dataset start and stop from config
-    if dataset_scope == "subset":
-        start = config.get("subset_start", 0)
-        end = config.get("subset_end", len(X_df))
-        X_sample = X_df.iloc[start:end]
-        print(f"Using dataset subset [{start}:{end}]")
-    else:
-        X_sample = X_df
-        print("Using full dataset")
-
-    # Compute Shap values
-    explainer, shap_values, X_df_aligned = compute_shap_values(model, X_sample)
-
-    # Calculate the predictions
-    try:
-        preds = model.predict(X_df_aligned)
-        unique_classes, class_counts = np.unique(preds, return_counts=True)
-
-        print("\nModel predictions:")
-        for cls, cnt in zip(unique_classes, class_counts):
-            percentage = (cnt / len(preds)) * 100
-            print(f"  - Class {cls}: {cnt} samples ({percentage:.1f}%)")
-    except Exception as e:
-        print(f"Error when calculating predictions: {e}")
+    if not os.path.exists(config_path):
+        print(f"Error: {config_path} not found.")
+        print(f"Current Working Directory: {os.getcwd()}")
         return
 
-    # Show Shap values
-    show_shap_values(shap_values, feature_names, preds)
+    with open(config_path, 'r') as f:
+        config = json.load(f)
 
-    # Create output directory
-    os.makedirs(output_dir, exist_ok=True)
+    # Find the analysis type if its tabular or timeseries
+    analysis_type = config.get("analysis")
 
-    # Save results to Excel
-    if save_excel:
-        shap_array = np.array(shap_values)
-        save_results_to_excel(X_df_aligned, shap_array, feature_names, preds, output_dir)
+    # Route to the correct runner
+    run_func = ANALYSIS_ROUTER.get(analysis_type)
+
+    if run_func:
+        run_func(config)
     else:
-        print("Excel output disabled (config).")
-
-    # Create plots
-    plots_output_dir = None
-    if generate_plots:
-        selected_plots = [
-            'beeswarm',
-            'bar',
-            'violin',
-            'dependence',
-            'decision_map',
-            'interactive_decision_map',
-            'heatmap',
-            'interactive_heatmap',
-            'waterfall'
-        ]
-
-        # Common folder with timestamp
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        plots_output_dir = os.path.join(output_dir, f"{timestamp}_selected_plots")
-        os.makedirs(plots_output_dir, exist_ok=True)
-
-        plot_shap_values(
-            shap_values,
-            X_df_aligned,
-            feature_names,
-            preds,
-            plots_output_dir,
-            selected_plots=selected_plots,
-            explainer=explainer
-        )
-    else:
-        print("Plot generation disabled (config).")
-
-    # Generate Jupyter Notebook with analysis
-    if generate_notebook and plots_output_dir is not None:
-        # Prepare model information for the notebook
-        model_info = {
-            'model_type': type(model).__name__,
-            'n_features': len(feature_names),
-            'n_classes': len(unique_classes),
-            'n_samples': len(X_df_aligned),
-            'feature_names': feature_names,
-            'classes': unique_classes.tolist()
-        }
-
-        try:
-            notebook_path = generate_analysis_notebook(
-                plots_output_dir,
-                model_info=model_info
-            )
-
-        except Exception as e:
-            print(f"\nΕrror generating notebook: {e}")
-            print("All plots are still available in the output directory.")
-            import traceback
-            traceback.print_exc()
-    elif not generate_plots:
-        print("\nΝotebook generation skipped (plots were not generated)")
-    else:
-        print("\nNotebook generation disabled (config).")
+        print(f"Error: Analysis type '{analysis_type}' is not supported.")
+        print(f"Supported types: {list(ANALYSIS_ROUTER.keys())}")
 
 
 if __name__ == "__main__":
     main()
+
+

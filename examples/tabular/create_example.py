@@ -10,7 +10,7 @@ n_samples = 1000
 # First create the ages
 ages = np.random.randint(18, 70, size=n_samples)
 
-# Calculate the max years of employment per person - we suppose they started after 18 or later
+# Calculate the max years of employment per person and we suppose they start working after 18 years old or later
 max_work_years = ages - 18
 
 # Per person years of employment can be from 0 to max_work_years
@@ -35,18 +35,19 @@ df = pd.DataFrame(data)
 
 df["Loan Approved"] = (
     (df["Income per Year"] > 40000) &
-    (df["Age"] >= 30) &
+    (df["Age"] >= 30)&
+    (df["Age"] <= 56) &
     (df["Years of Employment"] >= 2) &
     (
         # extra criteria for better balance
-        ((df["Age"] > 35) & (df["Years of Employment"] > 5)) |
+        ((df["Age"] > 35) & (df["Age"] <= 50) & (df["Years of Employment"] > 5)) |
         ((df["Income per Year"] > 60000) & (df["Years of Employment"] > 3))
     )
 ).astype(int)
 
 
 # Save dataset
-dataset_path = "realistic_dataset.csv"
+dataset_path = "../../realistic_dataset.csv"
 df.to_csv(dataset_path, index=False)
 print(f"\nDataset saved: {dataset_path}")
 
@@ -63,9 +64,8 @@ y = df["Loan Approved"]
 model = RandomForestClassifier(n_estimators=50, max_depth=4, random_state=42)
 model.fit(X, y)
 
-
 # Save the model
-model_path = "realistic_decision_tree.pkl"
+model_path = "../../realistic_decision_tree.pkl"
 with open(model_path, "wb") as f:
     pickle.dump(model, f)
 
