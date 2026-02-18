@@ -85,7 +85,8 @@ def validate_model(model, expected_package, expected_model_type):
     # Check model type
     model_type_mapping = {
         "decision_tree": ["DecisionTreeClassifier", "DecisionTreeRegressor"],
-        "random_forest": ["RandomForestClassifier", "RandomForestRegressor"],
+        "random_forest": ["RandomForestClassifier", "RandomForestRegressor",
+                          "MultiOutputClassifier", "MultiOutputRegressor"],
         "gradient_boosting": ["GradientBoostingClassifier", "GradientBoostingRegressor"],
         "xgboost": ["XGBClassifier", "XGBRegressor"]
     }
@@ -127,6 +128,8 @@ def run_tabular_analysis(config):
 
     if not is_classification:
         print(f"Model type: Regression")
+    else:
+        print(f"Model type: Classification")
 
     # Load dataset with feature names from config
     X_df = load_dataset(feature_names=feature_names, path_override=dataset_path)
@@ -148,15 +151,25 @@ def run_tabular_analysis(config):
     explainer, shap_values, X_df_aligned = compute_shap_values(model, X_sample)
 
     # Check if we have multiple outputs
-    is_multi_output = hasattr(model, 'estimators_') and len(model.estimators_) > 1
+    # MultiOutput wrappers have estimators_ where each is a separate model
+    # RandomForest/GradientBoosting also have estimators_ but they are trees, not separate models
+    model_class_name = type(model).__name__
+    is_multi_output = model_class_name in ['MultiOutputRegressor', 'MultiOutputClassifier']
     num_outputs = len(model.estimators_) if is_multi_output else 1
 
-    # For multi-output models, create explainers list for waterfall plots
-    if is_multi_output and not is_classification and hasattr(model, 'estimators_'):
+    # For multi-output models, create explainers list for each output
+    if is_multi_output:
         all_explainers = []
         for estimator in model.estimators_:
             exp = shap.TreeExplainer(estimator)
             all_explainers.append(exp)
+
+        # For multi-output, we compute SHAP values per output later
+        # So explainer and shap_values might be None here
+        if explainer is None:
+            # Use first explainer as a placeholder
+            explainer = all_explainers[0]
+            shap_values = explainer.shap_values(X_df_aligned)
     else:
         all_explainers = None
 
@@ -173,27 +186,60 @@ def run_tabular_analysis(config):
             preds_for_main = preds
 
         if is_classification:
-            unique_classes, class_counts = np.unique(preds_for_main, return_counts=True)
+            # Handle multi-output classification
+            if is_multi_output:
+                print("\nModel predictions (Multi-output Classification):")
+                for output_idx in range(num_outputs):
+                    output_name = output_labels.get(f"{output_idx}_name", f"Output {output_idx}")
+                    output_preds = all_outputs[:, output_idx]
+                    unique_classes, class_counts = np.unique(output_preds, return_counts=True)
 
-            print("\nModel predictions (Classification):")
-            for cls, cnt in zip(unique_classes, class_counts):
-                percentage = (cnt / len(preds_for_main)) * 100
-                # Use output labels if available
-                class_label = output_labels.get(str(int(cls)), f"Class {cls}")
-                print(f"  - {class_label}: {cnt} samples ({percentage:.1f}%)")
+                    print(f"\n  {output_name}:")
+                    for cls, cnt in zip(unique_classes, class_counts):
+                        percentage = (cnt / len(output_preds)) * 100
+                        # For multi-output classification, labels are stored as output_labels[output_idx][class]
+                        if str(output_idx) in output_labels and isinstance(output_labels[str(output_idx)], dict):
+                            class_label = output_labels[str(output_idx)].get(str(int(cls)), f"Class {cls}")
+                        else:
+                            class_label = f"Class {cls}"
+                        print(f"    - {class_label}: {cnt} samples ({percentage:.1f}%)")
+            else:
+                # Single-output classification
+                unique_classes, class_counts = np.unique(preds_for_main, return_counts=True)
+                print("\nModel predictions (Classification):")
+                for cls, cnt in zip(unique_classes, class_counts):
+                    percentage = (cnt / len(preds_for_main)) * 100
+                    class_label = output_labels.get(str(int(cls)), f"Class {cls}")
+                    print(f"  - {class_label}: {cnt} samples ({percentage:.1f}%)")
 
         else:
-            # Convert to classes for visualization purposes
-            n_bins = config.get("regression_bins", 5)
-            preds_binned, bin_edges, auto_labels = convert_regression_to_classes(preds_for_main, n_bins=n_bins)
+            # Regression path
+            if is_multi_output:
+                # Multi-output regression - no binning needed
+                print("\nModel predictions (Multi-output Regression):")
+                for i in range(num_outputs):
+                    output_name = output_labels.get(str(i), f"Output {i}")
+                    output_preds = all_outputs[:, i]
+                    print(
+                        f"  - {output_name}: min={output_preds.min():.2f}, max={output_preds.max():.2f}, mean={output_preds.mean():.2f}")
 
-            # For regression, use auto-generated labels for bins, not output_labels
-            bin_labels_for_display = auto_labels  # Use auto-generated bin ranges
+                # For multi-output regression, we don't bin
+                original_preds = preds_for_main
+                bin_labels_for_display = None
+                preds = preds_for_main  # Keep as continuous
+                unique_classes = None
+                class_counts = None
+            else:
+                # Binary/Single-output regression - apply binning for visualization
+                n_bins = config.get("regression_bins", 5)
+                preds_binned, bin_edges, auto_labels = convert_regression_to_classes(preds_for_main, n_bins=n_bins)
 
-            # Update predictions to binned version for plotting
-            original_preds = preds_for_main.copy()  # Keep original for Excel
-            preds = preds_binned
-            unique_classes, class_counts = np.unique(preds, return_counts=True)
+                bin_labels_for_display = auto_labels
+
+                # Update predictions to binned version for plotting
+                original_preds = preds_for_main.copy()
+                preds = preds_binned
+                unique_classes, class_counts = np.unique(preds, return_counts=True)
 
     except Exception as e:
         print(f"Error when calculating predictions: {e}")
@@ -203,27 +249,64 @@ def run_tabular_analysis(config):
 
     # Show SHAP values console
     if not is_classification:
-        # For regression, use bin labels instead of output_labels
-        show_shap_values(shap_values, feature_names, preds, bin_labels_for_display)
+        if is_multi_output:
+            # For multi-output regression, show SHAP values for first output only
+            first_explainer = all_explainers[0]
+            first_shap = first_explainer.shap_values(X_df_aligned)
+            # Handle 3D SHAP arrays
+            if isinstance(first_shap, list) and len(first_shap) > 0:
+                first_shap = first_shap[0]
+            if isinstance(first_shap, np.ndarray):
+                if first_shap.ndim > 2:
+                    first_shap = first_shap[:, :, 0] if first_shap.shape[2] > 0 else first_shap[:, :, 0]
+            print(f"\nShowing SHAP values for first output only (Output 0: {output_labels.get('0', 'Output 0')})")
+            show_shap_values(first_shap, feature_names, preds_for_main, output_labels)
+        else:
+            # For single-output regression, use bin labels
+            show_shap_values(shap_values, feature_names, preds, bin_labels_for_display)
     else:
-        show_shap_values(shap_values, feature_names, preds, output_labels)
+        # For classification (both single and multi-output)
+        show_shap_values(shap_values, feature_names, preds_for_main, output_labels,
+                         is_multi_output=is_multi_output, all_outputs=all_outputs)
 
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
 
     # Save results to Excel
     if save_excel:
-        shap_array = np.array(shap_values)
+        # For multi-output, we need to get SHAP values from the first output for the Excel
+        # (we'll add all outputs' predictions but only first output's SHAP for simplicity)
+        if is_multi_output and not is_classification:
+            # Get SHAP from first output
+            first_shap = all_explainers[0].shap_values(X_df_aligned)
+            if isinstance(first_shap, list) and len(first_shap) > 0:
+                first_shap = first_shap[0]
+            if isinstance(first_shap, np.ndarray) and first_shap.ndim > 2:
+                first_shap = first_shap[:, :, 0]
+            shap_array = np.array(first_shap)
 
-        # For regression, save both original and binned predictions
-        if not is_classification:
-            # Add original regression values to DataFrame
+            # Multi-output regression
+            save_results_to_excel(
+                X_df_aligned, shap_array, feature_names, preds_for_main, output_dir,
+                output_labels, original_predictions=all_outputs, is_multi_output=True,
+                is_classification=False
+            )
+        elif not is_classification and not is_multi_output:
+            # Single-output regression with binning
+            shap_array = np.array(shap_values)
             save_results_to_excel(
                 X_df_aligned, shap_array, feature_names, preds, output_dir,
-                bin_labels_for_display, original_predictions=original_preds
+                bin_labels_for_display, original_predictions=original_preds,
+                is_classification=False
             )
         else:
-            save_results_to_excel(X_df_aligned, shap_array, feature_names, preds, output_dir, output_labels)
+            # Classification (both single and multi-output)
+            shap_array = np.array(shap_values)
+            save_results_to_excel(
+                X_df_aligned, shap_array, feature_names, preds_for_main, output_dir,
+                output_labels, is_multi_output=is_multi_output, all_outputs=all_outputs,
+                is_classification=True
+            )
     else:
         print("Excel output disabled (config).")
 
@@ -245,6 +328,8 @@ def run_tabular_analysis(config):
         # Common folder with timestamp
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         task_type = "classification" if is_classification else "regression"
+        if is_multi_output:
+            task_type = f"multioutput_{task_type}"
         plots_output_dir = os.path.join(output_dir, f"{timestamp}_{task_type}_plots")
         os.makedirs(plots_output_dir, exist_ok=True)
 
@@ -252,16 +337,16 @@ def run_tabular_analysis(config):
             shap_values,
             X_df_aligned,
             feature_names,
-            preds,
+            preds if not (is_multi_output and not is_classification) else preds_for_main,
             plots_output_dir,
             selected_plots=selected_plots,
             explainer=explainer,
-            output_labels=output_labels if is_classification else output_labels,
-            # For classification: original labels, for regression: output names
-            is_multi_output=is_multi_output and not is_classification,  # Only for multi-output regression
-            all_outputs=all_outputs if not is_classification else None,
-            model=model if not is_classification else None,
-            all_explainers=all_explainers  # Pass explainers for waterfall plots
+            output_labels=output_labels,
+            is_multi_output=is_multi_output,
+            all_outputs=all_outputs,
+            model=model,
+            all_explainers=all_explainers,
+            is_classification=is_classification
         )
     else:
         print("Plot generation disabled (config).")
@@ -269,21 +354,56 @@ def run_tabular_analysis(config):
     # Generate Jupyter Notebook with analysis
     if generate_notebook and plots_output_dir is not None:
         # Prepare model information for the notebook
-        model_info = {
-            'model_type': type(model).__name__,
-            'task_type': 'Classification' if is_classification else 'Regression',
-            'n_features': len(feature_names),
-            'n_classes': len(unique_classes),
-            'n_samples': len(X_df_aligned),
-            'feature_names': feature_names,
-            'classes': unique_classes.tolist(),
-            'output_labels': bin_labels_for_display if not is_classification else output_labels
-        }
-
-        # Add regression-specific info
-        if not is_classification:
-            model_info['prediction_range'] = f"[{original_preds.min():.2f}, {original_preds.max():.2f}]"
-            model_info['n_bins'] = len(unique_classes)
+        if is_classification:
+            if is_multi_output:
+                # Multi-output classification
+                model_info = {
+                    'model_type': type(model).__name__,
+                    'task_type': 'Multi-output Classification',
+                    'n_features': len(feature_names),
+                    'n_outputs': num_outputs,
+                    'n_samples': len(X_df_aligned),
+                    'feature_names': feature_names,
+                    'output_labels': output_labels
+                }
+            else:
+                # Single-output classification
+                unique_classes = np.unique(preds_for_main)
+                model_info = {
+                    'model_type': type(model).__name__,
+                    'task_type': 'Classification',
+                    'n_features': len(feature_names),
+                    'n_classes': len(unique_classes),
+                    'n_samples': len(X_df_aligned),
+                    'feature_names': feature_names,
+                    'classes': unique_classes.tolist(),
+                    'output_labels': output_labels
+                }
+        else:
+            if is_multi_output:
+                model_info = {
+                    'model_type': type(model).__name__,
+                    'task_type': 'Multi-output Regression',
+                    'n_features': len(feature_names),
+                    'n_outputs': num_outputs,
+                    'n_samples': len(X_df_aligned),
+                    'feature_names': feature_names,
+                    'output_labels': output_labels
+                }
+            else:
+                unique_classes = np.unique(preds)
+                model_info = {
+                    'model_type': type(model).__name__,
+                    'task_type': 'Regression',
+                    'n_features': len(feature_names),
+                    'n_classes': len(unique_classes),
+                    'n_samples': len(X_df_aligned),
+                    'feature_names': feature_names,
+                    'classes': unique_classes.tolist(),
+                    'output_labels': bin_labels_for_display,
+                    'prediction_range': f"[{original_preds.min():.2f}, {original_preds.max():.2f}]",
+                    'n_bins': len(unique_classes)
+                }
 
         try:
             notebook_path = generate_analysis_notebook(
