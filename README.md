@@ -99,8 +99,9 @@ The toolbox generates two primary artifacts in the output/ folder:
 
 You can find examples of the jupyter notebooks here:
 
-|   | **Single Output Regression**  | **Binary Classification** | **Multioutput Regression** |
-| **Example** | [LSTM report](./output/explanation_lstm_gradient_20260220_143820.ipynb) | [RF Classify Report](./output/multi_report_random_forrest_20260220_143844.ipynb) | [RF Regress Report](./output/multi_report_random_forrest_20260220_143908.ipynb) |
+| Feature | **Single Output Regression** | **Binary Classification** | **Multioutput Regression** |
+| :--- | :--- | :--- | :--- |
+| **Example** | [LSTM Report](./output/explanation_lstm_gradient_20260220_143820.ipynb) | [RF Classify Report](./output/multi_report_random_forest_20260220_143844.ipynb) | [RF Regress Report](./output/multi_report_random_forest_20260220_143908.ipynb) |
 
 ---
 
