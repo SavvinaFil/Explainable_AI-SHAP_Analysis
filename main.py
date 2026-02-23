@@ -12,18 +12,32 @@ python main.py --config examples/tabular/regress/config.json
 
 
 def main():
-    # Get the directory where the script is located
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    # 1. Set up Argument Parser
+    parser = argparse.ArgumentParser(description="Parse Explainer Config")
+    parser.add_argument(
+        "--config", 
+        type=str, 
+        default="config.json", 
+        help="Path to the configuration JSON file"
+    )
+    args = parser.parse_args()
 
-    config_path = os.path.join(base_dir, "config.json")
+    # 2. Resolve the config path
+    # If the user provides a path, we use it directly; otherwise, we look for config.json locally
+    config_path = args.config
 
     if not os.path.exists(config_path):
         print(f"Error: {config_path} not found.")
         print(f"Current Working Directory: {os.getcwd()}")
         return
 
-    with open(config_path, 'r') as f:
-        config = json.load(f)
+    # 3. Load and Route
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+    except json.JSONDecodeError:
+        print(f"Error: {config_path} is not a valid JSON file.")
+        return
 
     # Find the analysis type if its tabular or timeseries
     analysis_type = config.get("analysis")
