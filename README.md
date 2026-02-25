@@ -1,48 +1,35 @@
-# AI Explainability Toolbox
+# 🛡️ AI Explainability Analysis Toolbox
 
-**Model-agnostic interpretability analysis for any AI tool.**
-
-This toolbox provides a standardized framework for explaining AI model predictions using SHAP (SHapley Additive exPlanations). It is designed to be model-agnostic, supporting both traditional machine learning (Scikit-Learn) and deep learning (PyTorch/LSTM) workflows.
+Neural Networks excel at navigating the complexities of the energy transition, but their decisions often remain "black boxes." This toolbox strips away the mystery by providing a standardized, model-agnostic framework for AI explainability using SHAP. It transforms complex model behavior into auditable, physically grounded insights—ensuring that when an AI makes a high-stakes decision, you can trace it back to the fundamental drivers of the energy system.
 
 ---
 
-## 🔍 Overview
+## 🧠 Explainability Analysis in a Nutshell
 
-This repository provides an automated pipeline to move from a trained model to a professional interpretability report. By utilizing a configuration-driven approach, users can generate audit-ready Excel files and pre-rendered Jupyter Notebooks without writing new code for every model.
+### What are Shapley Values?
+Derived from cooperative game theory, **Shapley values** provide a mathematically rigorous way to distribute the "payout" (the model's prediction) among the "players" (the input features). In the context of Machine Learning, a Shapley value represents the **average marginal contribution** of a feature toward a specific prediction, accounting for all possible combinations of other features.
 
 ---
 
-## 📁 Repository Structure
+### Why is this useful for Energy AI?
+In the energy sector, knowing *that* a model predicted a price spike or a solar drop is only half the battle. Explainability is the key to:
 
-```text
-/
-├── analysis/
-│   ├── tabular/                # Logic for CSV-based data (RF, XGB, etc.)
-│   │   ├── treebased/          # Tree-specific explainers
-│   │   └── __init__.py         # Tabular manager and registry
-│   └── timeseries/             # Logic for 3D temporal data (LSTM, GRU)
-│       └── lstm_explainer.py   # PyTorch-specific SHAP implementation
-│
-├── output/                     # Generated Reports and Audit logs
-│   ├── utils/
-│   │   └── report_gen.py       # The core Notebook generation engine
-│   └── (files)                 # .xlsx and .ipynb outputs appear here
-│
-├── source/                     # Input Assets
-│   ├── models/                 # Your .pkl or .pt model files
-│   └── data/                   # Your .csv or .pt data files
-│
-├── examples/                   # Pre-configured JSON templates
-├── main.py                     # Central entry point
-└── README.md
-```
+* **Feature Validation:** Verifying that the model prioritizes **physical drivers** (e.g., solar irradiance, ambient temperature).
+* **Trust & Adoption:** Providing grid operators with the transparency needed to act on AI-driven insights by isolating the **real-world variables** that trigger specific alerts.
+* **Model Debugging:** Diagnosing **systemic biases** or data leakage by identifying overpowering features.
+* **Regulatory & Market Compliance:** Establishing a clear **audit trail** for automated decisions.
 
-## 🚀 Getting Started
+> **Key Takeaway:** While traditional "Feature Importance" tells you what the model values across the entire dataset, **SHAP tells you why the model made a specific decision right now.**
+
+---
+
+
+## ⚡ Quickstart
 
 ### 1. Prepare your Assets
 Place your trained model and the dataset you want to explain in the `source/` directory:
-* **Tabular:** `.pkl` model and `.csv` data.
-* **Time-Series:** `.pt` PyTorch model and `.pt` pre-processed tensors.
+* **models:** place your trained AI agent in the `models/` folder.
+* **data:** place your data in the `data/` folder.
 
 ### 2. Configure your Analysis
 Create a JSON file to define the analysis scope. This file tells the toolbox where your files are and how to interpret the outputs.
@@ -80,12 +67,12 @@ python main.py --config examples/timeseries/lstm/config.json
 
 * Run Tabular Classification
 ```bash
-python main.py --config examples/tabular/classify/config.json
+python main.py --config examples/tabular/binary_classify/config.json
 ```
 
 * Run Tabular Regression
 ```bash
-python main.py --config examples/tabular/regress/config.json
+python main.py --config examples/tabular/multioutput_regress/config.json
 ```
 
 ---
@@ -107,5 +94,41 @@ You can find examples of the jupyter notebooks here:
 
 ## 🛠️ Supported Models
 * Tree-Based: RandomForest, XGBoost, DecisionTrees.
-* Deep Learning: LSTM, GRU, MLP (PyTorch, some still under construction).
-* Multi-Output: Full support for MultiOutputRegressor and MultiOutputClassifier wrappers.
+* Deep Learning: LSTM (PyTorch, more models under construction).
+
+
+## 📖 Documentation
+For detailed guides and tutorials, refer to our documentation suite:
+
+* **[Tutorial: LSTM Time-Series Analysis](./docs/tutorials/timeseries/lstm.md):** A step-by-step guide to training and explaining Long Short-Term Memory networks for temporal data.
+* **[Tutorial: Random Forest Binary Classification](./docs/tutorials/tabular/dc_binary_classify.md):** A comprehensive walkthrough for training and interpreting a binary classification model.
+* **[Tutorial: Multi-Output Random Forest Classification](./docs/tutorials/tabular/dc_multioutput_classify.md):** A specialized guide for handling multi-target classification tasks and analyzing joint feature importance.
+* **[Tutorial: Random Forest Regression](./docs/tutorials/tabular/dc_multioutput_regress.md):** A deep dive into training regression models and decoding the drivers behind continuous predictions.
+* **[Configuration Guide](./docs/configuration.md):** A complete technical breakdown of all `config.yaml` parameters and environment settings.
+* **[Explainability Theory](./docs/theory.md):** A detailed exploration of the mathematical foundations of Shapley Additive Explanations (SHAP).
+
+
+## 📁 Project Structure
+
+```text
+/
+├── analysis/
+│   ├── tabular/                # Logic for CSV-based data (RF, XGB, etc.)
+│   │   ├── treebased/          # Tree-specific explainers
+│   │   └── __init__.py         # Tabular manager and registry
+│   └── timeseries/             # Logic for 3D temporal data (LSTM, GRU)
+│       └── lstm_explainer.py   # PyTorch-specific SHAP implementation
+│
+├── output/                     # Generated Reports and Audit logs
+│   ├── utils/
+│   │   └── report_gen.py       # The core Notebook generation engine
+│   └── (files)                 # .xlsx and .ipynb outputs appear here
+│
+├── source/                     # Input Assets
+│   ├── models/                 # Your .pkl or .pt model files
+│   └── data/                   # Your .csv or .pt data files
+│
+├── examples/                   # Pre-configured JSON templates
+├── main.py                     # Central entry point
+└── README.md
+```
