@@ -32,12 +32,9 @@ To run this project, we recommend using [Conda](https://docs.anaconda.com/free/a
 First, clone the repository and navigate into the folder. Then, create the `shap_aie` environment:
 
 ```bash
-# Option A: Using the environment.yml (Recommended for Conda users)
+# Using the environment.yml (Recommended for Conda users)
 conda env create -f environment.yml
 
-# Option B: Manual creation
-conda create -n shap_aie python=3.10 -y
-conda activate shap_aie
 ```
 
 ## ⚡ Quickstart
